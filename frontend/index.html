@@ -10,40 +10,72 @@
     <div class="container">
         <!-- SCREEN 1: Name Entry -->
         <div id="screen-name" class="screen">
+            <div class="logo-badge">🕵️‍♂️</div>
             <h1>IMPOSTER</h1>
-            <p>Enter your name:</p>
-            <input type="text" id="input-name" placeholder="Your Name" maxlength="15">
-            <button id="btn-save-name">CONTINUE</button>
+            <p class="subtitle">Find the fake among your friends</p>
+            <input type="text" id="input-name" placeholder="Enter your nickname" maxlength="15" autocomplete="off">
+            <button id="btn-save-name" class="primary-btn">CONTINUE</button>
         </div>
 
         <!-- SCREEN 2: Main Menu -->
         <div id="screen-menu" class="screen hidden">
             <h2 id="welcome-msg">Welcome</h2>
-            <button id="btn-create">CREATE GAME</button>
-            <hr>
-            <p>Or join existing game:</p>
-            <input type="text" id="input-code" placeholder="GAME CODE" maxlength="4">
-            <button id="btn-join">JOIN</button>
+            <button id="btn-create" class="primary-btn">CREATE GAME</button>
+            <div class="divider"><span>or join room</span></div>
+            <input type="text" id="input-code" placeholder="GAME CODE" maxlength="4" autocomplete="off">
+            <button id="btn-join" class="secondary-btn">JOIN GAME</button>
         </div>
 
         <!-- SCREEN 3: Lobby -->
         <div id="screen-lobby" class="screen hidden">
-            <h2>GAME CODE: <span id="display-code"></span></h2>
-            <p id="lobby-status">Waiting for players...</p>
+            <div class="lobby-header">
+                <h2>ROOM CODE: <span id="display-code"></span></h2>
+                <button id="btn-leave" class="danger-btn-small">Leave</button>
+            </div>
+            <p id="lobby-status">Waiting for players (Min 3)...</p>
             <ul id="player-list"></ul>
-            <button id="btn-start" class="hidden">START GAME</button>
+            <button id="btn-start" class="primary-btn hidden">START GAME</button>
         </div>
 
-        <!-- SCREEN 4: Game / Word Reveal -->
+        <!-- SCREEN 4: Game / Word Reveal & Turn Phase -->
         <div id="screen-game" class="screen hidden">
-            <h2>YOUR SECRET WORD:</h2>
-            <div id="word-card" class="secret-box">
-                <span id="secret-word">Loading...</span>
+            <div class="game-top-bar">
+                <span id="game-phase-indicator">Phase: Word Reveal</span>
+                <span id="turn-timer">--s</span>
             </div>
-            <p>Memorize your word before it disappears!</p>
+
+            <!-- Reveal Card View -->
+            <div id="view-reveal" class="game-view">
+                <h3>YOUR SECRET WORD:</h3>
+                <div id="word-card" class="secret-box">
+                    <span id="secret-word">Loading...</span>
+                </div>
+                <p class="hint-text">Memorize your word! Game starts shortly...</p>
+            </div>
+
+            <!-- Discussion & Hint Turn View -->
+            <div id="view-playing" class="game-view hidden">
+                <div id="turn-banner" class="turn-banner">Waiting for turn...</div>
+                
+                <div class="chat-container">
+                    <div id="chat-messages" class="chat-messages"></div>
+                </div>
+
+                <div class="input-group" id="hint-input-group">
+                    <input type="text" id="input-hint" placeholder="Type your hint or defense..." autocomplete="off">
+                    <button id="btn-send-hint" class="primary-btn">SEND</button>
+                </div>
+            </div>
+
+            <!-- Voting View -->
+            <div id="view-voting" class="game-view hidden">
+                <h3>VOTE OUT THE IMPOSTER</h3>
+                <p class="hint-text">Click on a player to cast your vote:</p>
+                <div id="voting-list" class="voting-grid"></div>
+            </div>
         </div>
     </div>
 
     <script src="script.js"></script>
 </body>
-</html>
+            </html>
