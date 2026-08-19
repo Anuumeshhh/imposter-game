@@ -10,8 +10,10 @@ const screenLobby = document.getElementById("screen-lobby");
 const screenGame = document.getElementById("screen-game");
 
 const viewReveal = document.getElementById("view-reveal");
-const viewPlaying = document.getElementById("view-playing");
+const viewSpeaking = document.getElementById("view-speaking");
+const viewAnnouncement = document.getElementById("view-announcement");
 const viewVoting = document.getElementById("view-voting");
+const viewGameover = document.getElementById("view-gameover");
 
 document.getElementById("btn-save-name").addEventListener("click", () => {
     const val = document.getElementById("input-name").value.trim();
@@ -66,8 +68,13 @@ document.getElementById("btn-join").addEventListener("click", async () => {
 });
 
 document.getElementById("btn-leave").addEventListener("click", () => {
-    if (ws) ws.close();
     resetToMenu();
+});
+
+document.getElementById("btn-back-lobby").addEventListener("click", () => {
+    if (ws) {
+        ws.send(JSON.stringify({ action: "back_to_lobby" }));
+    }
 });
 
 function resetToMenu() {
@@ -95,9 +102,15 @@ function connectWebSocket() {
         }
     };
 
-    ws.onclose = () => {
-        resetToMenu();
-    };
+    ws.onclose = () => { resetToMenu(); };
+}
+
+function hideAllViews() {
+    viewReveal.classList.add("hidden");
+    viewSpeaking.classList.add("hidden");
+    viewAnnouncement.classList.add("hidden");
+    viewVoting.classList.add("hidden");
+    viewGameover.classList.add("hidden");
 }
 
 function updateUIState(data) {
@@ -136,68 +149,85 @@ function updateUIState(data) {
         } else {
             startBtn.classList.add("hidden");
             statusEl.innerText = data.players.length < 3 
-                ? `Waiting for more players (${data.players.length}/3)...` 
+                ? `Waiting for players (${data.players.length}/3)...` 
                 : "Waiting for host to start...";
         }
-    } else if (data.state === "playing" || data.state === "voting") {
+    } else if (data.state === "playing" || data.state === "game_over") {
         screenLobby.classList.add("hidden");
         screenGame.classList.remove("hidden");
-
-        if (data.sub_state === "reveal") {
-            viewReveal.classList.remove("hidden");
-            viewPlaying.classList.add("hidden");
-            viewVoting.classList.add("hidden");
-            document.getElementById("secret-word").innerText = data.my_word;
-            document.getElementById("game-phase-indicator").innerText = "Phase: Word Reveal";
-        } else if (data.sub_state === "discussion") {
-            viewReveal.classList.add("hidden");
-            viewPlaying.classList.remove("hidden");
-            viewVoting.classList.add("hidden");
-            document.getElementById("game-phase-indicator").innerText = "Phase: Hints & Discussion";
-
-            const turnBanner = document.getElementById("turn-banner");
-            const hintInputGrp = document.getElementById("hint-input-group");
-
-            if (data.current_turn_id === playerId) {
-                turnBanner.innerText = "👉 It is YOUR turn to give a hint!";
-                hintInputGrp.style.display = "flex";
-            } else {
-                turnBanner.innerText = `⏳ Waiting for ${data.current_turn_name} to give a hint...`;
-                hintInputGrp.style.display = "none";
-            }
-
-            const chatBox = document.getElementById("chat-messages");
-            chatBox.innerHTML = "";
-            (data.messages || []).forEach(m => {
-                const div = document.createElement("div");
-                div.className = "chat-msg";
-                div.innerHTML = `<span>${m.name}:</span> ${m.text}`;
-                chatBox.appendChild(div);
-            });
-            chatBox.scrollTop = chatBox.scrollHeight;
-        } else if (data.sub_state === "voting") {
-            viewReveal.classList.add("hidden");
-            viewPlaying.classList.add("hidden");
-            viewVoting.classList.remove("hidden");
-            document.getElementById("game-phase-indicator").innerText = "Phase: Voting";
-
-            const vList = document.getElementById("voting-list");
-            vList.innerHTML = "";
-            (data.players || []).forEach(p => {
-                if (p.id !== playerId && !p.eliminated) {
-                    const btn = document.createElement("button");
-                    btn.className = "vote-btn";
-                    btn.innerText = `Vote ${p.name}`;
-                    btn.onclick = () => {
-                        ws.send(JSON.stringify({ action: "vote", target_id: p.id }));
-                        vList.innerHTML = "<p>Vote submitted! Waiting for others...</p>";
-                    };
-                    vList.appendChild(btn);
-                }
-            });
-        }
+        hideAllViews();
 
         document.getElementById("turn-timer").innerText = `${data.timer || 0}s`;
+
+        if (data.state === "playing") {
+            if (data.sub_state === "reveal") {
+                viewReveal.classList.remove("hidden");
+                document.getElementById("secret-word").innerText = data.my_word;
+                document.getElementById("game-round-indicator").innerText = "REVEAL PHASE";
+            } 
+            else if (data.sub_state === "speaking") {
+                viewSpeaking.classList.remove("hidden");
+                document.getElementById("game-round-indicator").innerText = `ROUND ${data.current_round}/${data.total_rounds}`;
+                
+                const speakerNameEl = document.getElementById("speaker-name");
+                if (data.current_turn_id === playerId) {
+                    speakerNameEl.innerText = "YOUR TURN!";
+                } else {
+                    speakerNameEl.innerText = data.current_turn_name;
+                }
+                document.getElementById("reminder-word").innerText = data.my_word;
+            } 
+            else if (data.sub_state === "announcement") {
+                viewAnnouncement.classList.remove("hidden");
+                document.getElementById("announcement-title").innerText = data.announcement_text;
+                document.getElementById("game-round-indicator").innerText = "ANNOUNCEMENT";
+            } 
+            else if (data.sub_state === "voting") {
+                viewVoting.classList.remove("hidden");
+                document.getElementById("game-round-indicator").innerText = "VOTING PHASE";
+
+                const vList = document.getElementById("voting-list");
+                vList.innerHTML = "";
+                
+                (data.players || []).forEach(p => {
+                    if (p.id !== playerId && !p.eliminated) {
+                        const btn = document.createElement("button");
+                        btn.className = "vote-btn";
+                        btn.innerText = `Vote ${p.name}`;
+                        btn.onclick = () => {
+                            ws.send(JSON.stringify({ action: "vote", target_id: p.id }));
+                            vList.innerHTML = "<p class='hint-text'>Vote submitted! Waiting for others...</p>";
+                        };
+                        vList.appendChild(btn);
+                    }
+                });
+            }
+        } 
+        else if (data.state === "game_over") {
+            viewGameover.classList.remove("hidden");
+            document.getElementById("game-round-indicator").innerText = "GAME OVER";
+
+            const titleEl = document.getElementById("game-result-title");
+            if (data.winner === "crew") {
+                titleEl.className = "win-title";
+                titleEl.innerText = "VICTORY! CREWMATES WIN!";
+            } else {
+                titleEl.className = "lose-title";
+                titleEl.innerText = "DEFEAT! IMPOSTER WINS!";
+            }
+
+            document.getElementById("game-result-desc").innerText = data.end_msg || "";
+            document.getElementById("reveal-imposter-name").innerText = data.imposter_name || "--";
+            document.getElementById("reveal-common-word").innerText = data.common_word || "--";
+            document.getElementById("reveal-imposter-word").innerText = data.imposter_word || "--";
+
+            const backBtn = document.getElementById("btn-back-lobby");
+            if (data.is_host) {
+                backBtn.style.display = "inline-block";
+            } else {
+                backBtn.style.display = "none";
+            }
+        }
     }
 }
 
@@ -205,12 +235,4 @@ document.getElementById("btn-start").addEventListener("click", () => {
     if (ws) {
         ws.send(JSON.stringify({ action: "start_game" }));
     }
-});
-
-document.getElementById("btn-send-hint").addEventListener("click", () => {
-    const hintInput = document.getElementById("input-hint");
-    const text = hintInput.value.trim();
-    if (!text) return;
-    ws.send(JSON.stringify({ action: "send_hint", text: text }));
-    hintInput.value = "";
 });
