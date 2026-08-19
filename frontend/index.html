@@ -13,7 +13,7 @@
             <div class="logo-badge">🕵️‍♂️</div>
             <h1>IMPOSTER</h1>
             <p class="subtitle">Find the fake among your friends</p>
-            <input type="text" id="input-name" placeholder="Enter your nickname" maxlength="15" autocomplete="off">
+            <input type="text" id="input-name" placeholder="Enter nickname" maxlength="15" autocomplete="off">
             <button id="btn-save-name" class="primary-btn">CONTINUE</button>
         </div>
 
@@ -37,45 +37,64 @@
             <button id="btn-start" class="primary-btn hidden">START GAME</button>
         </div>
 
-        <!-- SCREEN 4: Game / Word Reveal & Turn Phase -->
+        <!-- SCREEN 4: Game Container -->
         <div id="screen-game" class="screen hidden">
             <div class="game-top-bar">
-                <span id="game-phase-indicator">Phase: Word Reveal</span>
-                <span id="turn-timer">--s</span>
+                <span id="game-round-indicator">Round 1/3</span>
+                <span id="turn-timer" class="timer-badge">30s</span>
             </div>
 
-            <!-- Reveal Card View -->
+            <!-- View 1: Word Reveal -->
             <div id="view-reveal" class="game-view">
                 <h3>YOUR SECRET WORD:</h3>
-                <div id="word-card" class="secret-box">
+                <div class="secret-box">
                     <span id="secret-word">Loading...</span>
                 </div>
-                <p class="hint-text">Memorize your word! Game starts shortly...</p>
+                <p class="hint-text">Memorize your word! Game starting...</p>
             </div>
 
-            <!-- Discussion & Hint Turn View -->
-            <div id="view-playing" class="game-view hidden">
-                <div id="turn-banner" class="turn-banner">Waiting for turn...</div>
-                
-                <div class="chat-container">
-                    <div id="chat-messages" class="chat-messages"></div>
+            <!-- View 2: Speaking Turn -->
+            <div id="view-speaking" class="game-view hidden">
+                <div class="speaker-card">
+                    <div class="speaker-icon">🎙️</div>
+                    <h2 id="speaker-name">Player Name</h2>
+                    <p class="speaker-sub">It's your turn to speak on Discord!</p>
                 </div>
-
-                <div class="input-group" id="hint-input-group">
-                    <input type="text" id="input-hint" placeholder="Type your hint or defense..." autocomplete="off">
-                    <button id="btn-send-hint" class="primary-btn">SEND</button>
+                <div class="secret-word-reminder">
+                    Word: <strong id="reminder-word">???</strong>
                 </div>
             </div>
 
-            <!-- Voting View -->
+            <!-- View 3: Announcement Overlay -->
+            <div id="view-announcement" class="game-view hidden">
+                <div class="announcement-card">
+                    <h1 id="announcement-title">IT'S VOTING TIME!</h1>
+                </div>
+            </div>
+
+            <!-- View 4: Voting -->
             <div id="view-voting" class="game-view hidden">
                 <h3>VOTE OUT THE IMPOSTER</h3>
-                <p class="hint-text">Click on a player to cast your vote:</p>
+                <p class="hint-text">Cast your vote below:</p>
                 <div id="voting-list" class="voting-grid"></div>
+            </div>
+
+            <!-- View 5: Game Over / Results -->
+            <div id="view-gameover" class="game-view hidden">
+                <h1 id="game-result-title" class="win-title">CREWMATES WIN!</h1>
+                <p id="game-result-desc" class="result-desc"></p>
+                
+                <div class="reveal-box">
+                    <p>Imposter: <strong id="reveal-imposter-name">--</strong></p>
+                    <p>Common Word: <strong id="reveal-common-word">--</strong></p>
+                    <p>Imposter Word: <strong id="reveal-imposter-word">--</strong></p>
+                </div>
+
+                <button id="btn-back-lobby" class="primary-btn">RETURN TO LOBBY</button>
             </div>
         </div>
     </div>
 
     <script src="script.js"></script>
 </body>
-            </html>
+</html>
