@@ -4,6 +4,12 @@ let gameCode = "";
 let ws = null;
 let isJoining = false;
 
+let pendingVoteTargetId = null;
+let pendingVoteTargetName = "";
+let hasVotedThisRound = false;
+
+let pendingModalAction = null;
+
 const screenName = document.getElementById("screen-name");
 const screenMenu = document.getElementById("screen-menu");
 const screenLobby = document.getElementById("screen-lobby");
@@ -14,6 +20,39 @@ const viewSpeaking = document.getElementById("view-speaking");
 const viewAnnouncement = document.getElementById("view-announcement");
 const viewVoting = document.getElementById("view-voting");
 const viewGameover = document.getElementById("view-gameover");
+
+// Modal control
+function showModal(title, desc, onConfirm) {
+    document.getElementById("modal-title").innerText = title;
+    document.getElementById("modal-desc").innerText = desc;
+    pendingModalAction = onConfirm;
+    document.getElementById("modal-overlay").classList.remove("hidden");
+}
+
+document.getElementById("modal-btn-confirm").addEventListener("click", () => {
+    document.getElementById("modal-overlay").classList.add("hidden");
+    if (pendingModalAction) pendingModalAction();
+});
+
+document.getElementById("modal-btn-cancel").addEventListener("click", () => {
+    document.getElementById("modal-overlay").classList.add("hidden");
+    pendingModalAction = null;
+});
+
+// Name Editing
+function promptChangeName() {
+    const newName = prompt("Enter your new nickname:", playerName);
+    if (newName && newName.trim()) {
+        playerName = newName.trim();
+        document.getElementById("welcome-msg").innerText = `Welcome, ${playerName}`;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ action: "change_name", new_name: playerName }));
+        }
+    }
+}
+
+document.getElementById("btn-change-name-menu").addEventListener("click", promptChangeName);
+document.getElementById("btn-change-name-lobby").addEventListener("click", promptChangeName);
 
 document.getElementById("btn-save-name").addEventListener("click", () => {
     const val = document.getElementById("input-name").value.trim();
@@ -67,14 +106,23 @@ document.getElementById("btn-join").addEventListener("click", async () => {
     }
 });
 
-document.getElementById("btn-leave").addEventListener("click", () => {
-    resetToMenu();
+document.getElementById("btn-leave-lobby").addEventListener("click", () => {
+    showModal("Leave Room?", "You will exit back to the main menu.", resetToMenu);
+});
+
+document.getElementById("btn-leave-game").addEventListener("click", () => {
+    showModal("Leave Game?", "Are you sure you want to leave mid-game?", () => {
+        if (ws) ws.send(JSON.stringify({ action: "leave_game" }));
+        resetToMenu();
+    });
 });
 
 document.getElementById("btn-back-lobby").addEventListener("click", () => {
-    if (ws) {
-        ws.send(JSON.stringify({ action: "back_to_lobby" }));
-    }
+    if (ws) ws.send(JSON.stringify({ action: "back_to_lobby" }));
+});
+
+document.getElementById("btn-finish-turn").addEventListener("click", () => {
+    if (ws) ws.send(JSON.stringify({ action: "finish_turn" }));
 });
 
 function resetToMenu() {
@@ -85,6 +133,7 @@ function resetToMenu() {
     gameCode = "";
     playerId = "";
     isJoining = false;
+    hasVotedThisRound = false;
     document.getElementById("btn-join").disabled = false;
     screenLobby.classList.add("hidden");
     screenGame.classList.add("hidden");
@@ -119,6 +168,7 @@ function updateUIState(data) {
     document.getElementById("btn-join").disabled = false;
     
     if (data.state === "lobby") {
+        hasVotedThisRound = false;
         screenLobby.classList.remove("hidden");
         screenGame.classList.add("hidden");
         
@@ -161,6 +211,7 @@ function updateUIState(data) {
 
         if (data.state === "playing") {
             if (data.sub_state === "reveal") {
+                hasVotedThisRound = false;
                 viewReveal.classList.remove("hidden");
                 document.getElementById("secret-word").innerText = data.my_word;
                 document.getElementById("game-round-indicator").innerText = "REVEAL PHASE";
@@ -175,6 +226,10 @@ function updateUIState(data) {
                 } else {
                     speakerNameEl.innerText = data.current_turn_name;
                 }
+                
+                document.getElementById("btn-finish-turn").innerText = 
+                    `Finish Turn (${data.skip_votes || 0}/${data.skip_votes_needed || 1})`;
+
                 document.getElementById("reminder-word").innerText = data.my_word;
             } 
             else if (data.sub_state === "announcement") {
@@ -187,20 +242,43 @@ function updateUIState(data) {
                 document.getElementById("game-round-indicator").innerText = "VOTING PHASE";
 
                 const vList = document.getElementById("voting-list");
-                vList.innerHTML = "";
-                
-                (data.players || []).forEach(p => {
-                    if (p.id !== playerId && !p.eliminated) {
-                        const btn = document.createElement("button");
-                        btn.className = "vote-btn";
-                        btn.innerText = `Vote ${p.name}`;
-                        btn.onclick = () => {
-                            ws.send(JSON.stringify({ action: "vote", target_id: p.id }));
-                            vList.innerHTML = "<p class='hint-text'>Vote submitted! Waiting for others...</p>";
-                        };
-                        vList.appendChild(btn);
+                const confirmBox = document.getElementById("voting-confirm-box");
+                const statusBox = document.getElementById("voting-status-box");
+
+                if (hasVotedThisRound || data.my_vote) {
+                    vList.classList.add("hidden");
+                    confirmBox.classList.add("hidden");
+                    statusBox.classList.remove("hidden");
+                    document.getElementById("voting-subtext").classList.add("hidden");
+                    document.getElementById("voted-status-text").innerText = `You voted for ${data.my_vote_name || "a player"}. Waiting for others...`;
+                } else {
+                    statusBox.classList.add("hidden");
+                    document.getElementById("voting-subtext").classList.remove("hidden");
+
+                    if (!pendingVoteTargetId) {
+                        vList.classList.remove("hidden");
+                        confirmBox.classList.add("hidden");
+                        vList.innerHTML = "";
+                        
+                        (data.players || []).forEach(p => {
+                            if (!p.eliminated) {
+                                const btn = document.createElement("button");
+                                btn.className = "vote-btn";
+                                btn.innerText = p.id === playerId ? `Vote Yourself (${p.name})` : `Vote ${p.name}`;
+                                btn.onclick = () => {
+                                    pendingVoteTargetId = p.id;
+                                    pendingVoteTargetName = p.name;
+                                    updateUIState(data);
+                                };
+                                vList.appendChild(btn);
+                            }
+                        });
+                    } else {
+                        vList.classList.add("hidden");
+                        confirmBox.classList.remove("hidden");
+                        document.getElementById("voting-confirm-text").innerText = `Are you sure you want to vote ${pendingVoteTargetName}?`;
                     }
-                });
+                }
             }
         } 
         else if (data.state === "game_over") {
@@ -221,18 +299,27 @@ function updateUIState(data) {
             document.getElementById("reveal-common-word").innerText = data.common_word || "--";
             document.getElementById("reveal-imposter-word").innerText = data.imposter_word || "--";
 
-            const backBtn = document.getElementById("btn-back-lobby");
-            if (data.is_host) {
-                backBtn.style.display = "inline-block";
-            } else {
-                backBtn.style.display = "none";
-            }
+            document.getElementById("btn-back-lobby").style.display = data.is_host ? "inline-block" : "none";
         }
     }
 }
 
-document.getElementById("btn-start").addEventListener("click", () => {
-    if (ws) {
-        ws.send(JSON.stringify({ action: "start_game" }));
+document.getElementById("btn-confirm-vote").addEventListener("click", () => {
+    if (pendingVoteTargetId && ws) {
+        ws.send(JSON.stringify({ action: "vote", target_id: pendingVoteTargetId }));
+        hasVotedThisRound = true;
+        pendingVoteTargetId = null;
+        pendingVoteTargetName = "";
     }
+});
+
+document.getElementById("btn-cancel-vote").addEventListener("click", () => {
+    pendingVoteTargetId = null;
+    pendingVoteTargetName = "";
+    document.getElementById("voting-confirm-box").classList.add("hidden");
+    document.getElementById("voting-list").classList.remove("hidden");
+});
+
+document.getElementById("btn-start").addEventListener("click", () => {
+    if (ws) ws.send(JSON.stringify({ action: "start_game" }));
 });
