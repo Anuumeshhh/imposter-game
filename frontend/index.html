@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Imposter Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- SCREEN 1: Name Entry -->
+        <div id="screen-name" class="screen">
+            <h1>IMPOSTER</h1>
+            <p>Enter your name:</p>
+            <input type="text" id="input-name" placeholder="Your Name" maxlength="15">
+            <button id="btn-save-name">CONTINUE</button>
+        </div>
+
+        <!-- SCREEN 2: Main Menu -->
+        <div id="screen-menu" class="screen hidden">
+            <h2 id="welcome-msg">Welcome</h2>
+            <button id="btn-create">CREATE GAME</button>
+            <hr>
+            <p>Or join existing game:</p>
+            <input type="text" id="input-code" placeholder="GAME CODE" maxlength="4">
+            <button id="btn-join">JOIN</button>
+        </div>
+
+        <!-- SCREEN 3: Lobby -->
+        <div id="screen-lobby" class="screen hidden">
+            <h2>GAME CODE: <span id="display-code"></span></h2>
+            <p id="lobby-status">Waiting for players...</p>
+            <ul id="player-list"></ul>
+            <button id="btn-start" class="hidden">START GAME</button>
+        </div>
+
+        <!-- SCREEN 4: Game / Word Reveal -->
+        <div id="screen-game" class="screen hidden">
+            <h2>YOUR SECRET WORD:</h2>
+            <div id="word-card" class="secret-box">
+                <span id="secret-word">Loading...</span>
+            </div>
+            <p>Memorize your word before it disappears!</p>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
