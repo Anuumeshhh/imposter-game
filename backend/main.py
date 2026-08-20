@@ -20,6 +20,7 @@ app.add_middleware(
 
 class CreateGameRequest(BaseModel):
     host_name: str
+    mode: str = "single"
 
 
 class JoinGameRequest(BaseModel):
@@ -29,7 +30,7 @@ class JoinGameRequest(BaseModel):
 
 @app.post("/api/create-game")
 async def create_game(req: CreateGameRequest):
-    room, player = game_manager.create_room(req.host_name)
+    room, player = game_manager.create_room(req.host_name, req.mode)
     return {"game_code": room.code, "player_id": player.id}
 
 
@@ -77,7 +78,8 @@ async def websocket_endpoint(websocket: WebSocket, game_code: str, player_id: st
                     await room.broadcast_state()
 
             elif action == "start_game" and player.is_host:
-                if len(room.players) >= 3:
+                min_players = 5 if room.mode == "double" else 3
+                if len(room.players) >= min_players:
                     room.start_game()
 
             elif action == "finish_turn" and not player.eliminated:
