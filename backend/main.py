@@ -18,17 +18,6 @@ app.add_middleware(
 )
 
 
-@app.get("/")
-async def read_index():
-
-    if os.path.exists("index.html"):
-        return FileResponse("index.html")
-    return {"status": "Backend running", "message": "index.html not found"}
-
-if os.path.exists("static"):
-    app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
 class CreateGameRequest(BaseModel):
     host_name: str
 
@@ -109,3 +98,15 @@ async def websocket_endpoint(websocket: WebSocket, game_code: str, player_id: st
     except WebSocketDisconnect:
         room.remove_player(player_id)
         await room.broadcast_state()
+
+
+@app.get("/")
+async def read_index():
+    if os.path.exists("frontend/index.html"):
+        return FileResponse("frontend/index.html")
+    return {"status": "Backend running", "error": "frontend/index.html not found"}
+
+
+# Mount frontend directory for relative asset resolution (script.js, styles.css)
+if os.path.exists("frontend"):
+    app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
