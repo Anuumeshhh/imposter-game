@@ -1,27 +1,20 @@
 import random
 
-# Word pairs format: (Common Word, Imposter Word)
 WORD_PAIRS = [
-    ("Apple", "Pear"),
-    ("Dog", "Wolf"),
     ("Pizza", "Burger"),
     ("Coffee", "Tea"),
-    ("Airplane", "Helicopter"),
-    ("Guitar", "Violin"),
+    ("Cat", "Dog"),
+    ("Sun", "Moon"),
+    ("Guitar", "Piano"),
+    ("Laptop", "Tablet"),
+    ("Ocean", "River"),
     ("Doctor", "Nurse"),
     ("Football", "Basketball"),
-    ("Cat", "Tiger"),
-    ("Sun", "Moon"),
-    ("Ocean", "Lake"),
-    ("Gold", "Silver"),
-    ("Phone", "Tablet"),
-    ("Pen", "Pencil"),
-    ("Bicycle", "Motorcycle"),
-    ("Movie", "Play"),
-    ("Shirt", "Jacket"),
-    ("Train", "Bus")
+    ("Mountain", "Hill"),
 ]
 
 def get_random_word_pair():
-    """Returns a tuple containing (common_word, imposter_word)."""
-    return random.choice(WORD_PAIRS)
+    common, imposter = random.choice(WORD_PAIRS)
+    if random.choice([True, False]):
+        return common, imposter
+    return imposter, common
