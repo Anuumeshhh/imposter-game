@@ -53,7 +53,6 @@ class Room:
         self.common_word = ""
         self.imposter_word = ""
 
-        self.skip_turn_votes = set()
         self.announcement_text = ""
         self.winner = None
         self.end_msg = ""
@@ -102,8 +101,6 @@ class Room:
                 "is_eliminated": p.eliminated,
                 "current_turn_id": current_speaker.id if current_speaker else None,
                 "current_turn_name": current_speaker.name if current_speaker else "",
-                "skip_votes": len(self.skip_turn_votes),
-                "skip_votes_needed": (len(active_players) // 2) + 1,
                 "announcement_text": self.announcement_text,
                 "my_vote": p.vote,
                 "my_vote_name": target_voted_name,
@@ -127,7 +124,6 @@ class Room:
         self.is_tiebreaker = False
         self.winner = None
         self.end_msg = ""
-        self.skip_turn_votes.clear()
 
         for p in self.players.values():
             p.eliminated = False
@@ -163,7 +159,6 @@ class Room:
     async def start_speaking_round(self):
         self.sub_state = "speaking"
         self.current_turn_index = 0
-        self.skip_turn_votes.clear()
         self.start_phase_timer(30, self.next_turn)
 
     async def finish_turn(self, player_id: str):
@@ -174,18 +169,12 @@ class Room:
         active = self.get_active_players()
         current_speaker = active[self.current_turn_index] if self.current_turn_index < len(active) else None
 
+        # UPDATED: Only progress the turn if the requester is the current speaker. 
+        # Ignored by backend if anyone else sends it.
         if current_speaker and player_id == current_speaker.id:
             await self.next_turn()
-        else:
-            self.skip_turn_votes.add(player_id)
-            needed = (len(active) // 2) + 1
-            if len(self.skip_turn_votes) >= needed:
-                await self.next_turn()
-            else:
-                await self.broadcast_state()
 
     async def next_turn(self):
-        self.skip_turn_votes.clear()
         active = self.get_active_players()
         self.current_turn_index += 1
 
