@@ -40,8 +40,9 @@ class Room:
         self.state = "lobby"  # lobby, playing, game_over
         self.sub_state = "reveal"  # reveal, speaking, announcement, voting
         
-        self.current_round = 1
-        self.total_rounds = 3
+        self.current_cycle_round = 1  # 1 or 2
+        self.is_tiebreaker = False
+        
         self.current_turn_index = 0
         self.timer = 0
         self.timer_task: Optional[asyncio.Task] = None
@@ -90,8 +91,8 @@ class Room:
                 "timer": self.timer,
                 "players": [pl.to_dict() for pl in self.players.values()],
                 "my_word": p.word,
-                "current_round": self.current_round,
-                "total_rounds": self.total_rounds,
+                "current_cycle_round": self.current_cycle_round,
+                "is_tiebreaker": self.is_tiebreaker,
                 "current_turn_id": current_speaker.id if current_speaker else None,
                 "current_turn_name": current_speaker.name if current_speaker else "",
                 "skip_votes": len(self.skip_turn_votes),
@@ -114,7 +115,8 @@ class Room:
     def start_game(self):
         self.state = "playing"
         self.sub_state = "reveal"
-        self.current_round = 1
+        self.current_cycle_round = 1
+        self.is_tiebreaker = False
         self.winner = None
         self.end_msg = ""
         self.skip_turn_votes.clear()
@@ -131,7 +133,7 @@ class Room:
         for p in player_list:
             p.word = self.imposter_word if p.id == self.imposter_id else self.common_word
 
-        self.start_phase_timer(10, self.next_phase_after_reveal)
+        self.start_phase_timer(10, self.start_speaking_round)
 
     def start_phase_timer(self, seconds: int, callback):
         if self.timer_task:
@@ -148,7 +150,7 @@ class Room:
         await self.broadcast_state()
         await callback()
 
-    async def next_phase_after_reveal(self):
+    async def start_speaking_round(self):
         self.sub_state = "speaking"
         self.current_turn_index = 0
         self.skip_turn_votes.clear()
@@ -174,7 +176,15 @@ class Room:
         self.current_turn_index += 1
 
         if self.current_turn_index >= len(active):
-            await self.start_voting_phase()
+            if self.is_tiebreaker:
+                await self.start_voting_phase()
+            elif self.current_cycle_round < 2:
+                self.current_cycle_round += 1
+                self.announcement_text = f"Round {self.current_cycle_round} Speaking Phase"
+                self.sub_state = "announcement"
+                self.start_phase_timer(3, self.start_speaking_round)
+            else:
+                await self.start_voting_phase()
         else:
             self.start_phase_timer(30, self.next_turn)
 
@@ -212,35 +222,42 @@ class Room:
                 vote_counts[p.vote] = vote_counts.get(p.vote, 0) + 1
 
         eliminated_id = None
-        if vote_counts:
+        is_tie = False
+
+        if not vote_counts:
+            is_tie = True
+        else:
             max_votes = max(vote_counts.values())
             top_voted = [pid for pid, cnt in vote_counts.items() if cnt == max_votes]
             if len(top_voted) == 1:
                 eliminated_id = top_voted[0]
+            else:
+                is_tie = True
 
-        if eliminated_id:
-            eliminated_player = self.players[eliminated_id]
-            eliminated_player.eliminated = True
-            self.announcement_text = f"{eliminated_player.name} was voted out!"
-            
-            if eliminated_id == self.imposter_id:
-                self.end_game("crew", f"Crewmates successfully eliminated the Imposter ({eliminated_player.name})!")
-                return
-        else:
-            self.announcement_text = "No one was eliminated this round."
+        if is_tie:
+            self.is_tiebreaker = True
+            self.announcement_text = "It's a tie! Starting Tiebreaker Speaking Round."
+            self.sub_state = "announcement"
+            self.start_phase_timer(4, self.start_speaking_round)
+            return
+
+        eliminated_player = self.players[eliminated_id]
+        eliminated_player.eliminated = True
+
+        if eliminated_id == self.imposter_id:
+            self.end_game("crew", f"Crewmates won! {eliminated_player.name} was the Imposter!")
+            return
 
         active_after = self.get_active_players()
-        if len(active_after) <= 2:
-            self.end_game("imposter", "Imposter survived until the final 2!")
+        if len(active_after) <= 3:
+            self.end_game("imposter", f"{eliminated_player.name} was NOT the Imposter! Imposter wins!")
             return
 
-        if self.current_round >= self.total_rounds:
-            self.end_game("imposter", "Imposter survived all rounds!")
-            return
-
-        self.current_round += 1
+        self.is_tiebreaker = False
+        self.current_cycle_round = 1
+        self.announcement_text = f"{eliminated_player.name} was NOT the Imposter! Starting next 2-round cycle."
         self.sub_state = "announcement"
-        self.start_phase_timer(5, self.next_phase_after_reveal)
+        self.start_phase_timer(5, self.start_speaking_round)
 
     def end_game(self, winner: str, end_msg: str):
         self.state = "game_over"
@@ -253,6 +270,8 @@ class Room:
     def reset_to_lobby(self):
         self.state = "lobby"
         self.sub_state = "reveal"
+        self.is_tiebreaker = False
+        self.current_cycle_round = 1
         if self.timer_task:
             self.timer_task.cancel()
         for p in self.players.values():
