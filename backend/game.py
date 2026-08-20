@@ -40,7 +40,8 @@ class Room:
         self.state = "lobby"  # lobby, playing, game_over
         self.sub_state = "reveal"  # reveal, speaking, announcement, voting
         
-        self.current_cycle_round = 1  # 1 or 2
+        self.total_speaking_rounds = 1  # 1, 2, 3, 4...
+        self.current_cycle_round = 1    # 1 or 2
         self.is_tiebreaker = False
         
         self.current_turn_index = 0
@@ -91,8 +92,10 @@ class Room:
                 "timer": self.timer,
                 "players": [pl.to_dict() for pl in self.players.values()],
                 "my_word": p.word,
+                "current_round": self.total_speaking_rounds,
                 "current_cycle_round": self.current_cycle_round,
                 "is_tiebreaker": self.is_tiebreaker,
+                "is_eliminated": p.eliminated,
                 "current_turn_id": current_speaker.id if current_speaker else None,
                 "current_turn_name": current_speaker.name if current_speaker else "",
                 "skip_votes": len(self.skip_turn_votes),
@@ -115,6 +118,7 @@ class Room:
     def start_game(self):
         self.state = "playing"
         self.sub_state = "reveal"
+        self.total_speaking_rounds = 1
         self.current_cycle_round = 1
         self.is_tiebreaker = False
         self.winner = None
@@ -157,6 +161,10 @@ class Room:
         self.start_phase_timer(30, self.next_turn)
 
     async def finish_turn(self, player_id: str):
+        player = self.players.get(player_id)
+        if not player or player.eliminated:
+            return
+
         active = self.get_active_players()
         current_speaker = active[self.current_turn_index] if self.current_turn_index < len(active) else None
 
@@ -180,7 +188,8 @@ class Room:
                 await self.start_voting_phase()
             elif self.current_cycle_round < 2:
                 self.current_cycle_round += 1
-                self.announcement_text = f"Round {self.current_cycle_round} Speaking Phase"
+                self.total_speaking_rounds += 1
+                self.announcement_text = f"Round {self.total_speaking_rounds} Speaking Phase"
                 self.sub_state = "announcement"
                 self.start_phase_timer(3, self.start_speaking_round)
             else:
@@ -205,13 +214,16 @@ class Room:
                 p.vote = random.choice(targets)
 
     async def record_vote(self, voter_id: str, target_id: str):
-        if voter_id in self.players and not self.players[voter_id].eliminated:
-            self.players[voter_id].vote = target_id
-            await self.broadcast_state()
+        voter = self.players.get(voter_id)
+        if not voter or voter.eliminated or self.sub_state != "voting":
+            return
 
-            active = self.get_active_players()
-            if all(p.vote is not None for p in active):
-                await self.evaluate_votes()
+        voter.vote = target_id
+        await self.broadcast_state()
+
+        active = self.get_active_players()
+        if all(p.vote is not None for p in active):
+            await self.evaluate_votes()
 
     async def evaluate_votes(self):
         active = self.get_active_players()
@@ -236,7 +248,8 @@ class Room:
 
         if is_tie:
             self.is_tiebreaker = True
-            self.announcement_text = "It's a tie! Starting Tiebreaker Speaking Round."
+            self.total_speaking_rounds += 1
+            self.announcement_text = f"It's a tie! Round {self.total_speaking_rounds} (Tiebreaker Speaking Round)"
             self.sub_state = "announcement"
             self.start_phase_timer(4, self.start_speaking_round)
             return
@@ -255,7 +268,8 @@ class Room:
 
         self.is_tiebreaker = False
         self.current_cycle_round = 1
-        self.announcement_text = f"{eliminated_player.name} was NOT the Imposter! Starting next 2-round cycle."
+        self.total_speaking_rounds += 1
+        self.announcement_text = f"{eliminated_player.name} was NOT the Imposter! Starting Round {self.total_speaking_rounds}."
         self.sub_state = "announcement"
         self.start_phase_timer(5, self.start_speaking_round)
 
@@ -271,6 +285,7 @@ class Room:
         self.state = "lobby"
         self.sub_state = "reveal"
         self.is_tiebreaker = False
+        self.total_speaking_rounds = 1
         self.current_cycle_round = 1
         if self.timer_task:
             self.timer_task.cancel()
