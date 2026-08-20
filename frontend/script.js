@@ -27,12 +27,12 @@ const viewGameover = document.getElementById("view-gameover");
    ========================================================================== */
 document.getElementById("btn-admin-access").addEventListener("click", () => {
     const inputCode = prompt("Enter Developer Admin Passcode:");
-    if (inputCode && inputCode.trim().toLowerCase() === "aurora") {
+    // Added a secret bypass passcode easter egg for your group!
+    if (inputCode && (inputCode.trim().toLowerCase() === "aurora" || inputCode.trim().toLowerCase() === "kaloaringal")) {
         isAdmin = true;
         alert("👑 Admin Perks Activated!");
         document.getElementById("btn-admin-access").classList.add("hidden");
         
-        // Notify backend so every player in the room sees [ADMIN] tag
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ action: "activate_admin" }));
         }
@@ -75,12 +75,24 @@ document.getElementById("btn-save-name").addEventListener("click", () => {
     screenMenu.classList.remove("hidden");
 });
 
-document.getElementById("btn-create").addEventListener("click", async () => {
+/* ==========================================================================
+   🎮 GAME MODE CREATION LOGIC
+   ========================================================================== */
+document.getElementById("btn-create").addEventListener("click", () => {
+    document.getElementById("modal-mode-select").classList.remove("hidden");
+});
+
+document.getElementById("btn-mode-cancel").addEventListener("click", () => {
+    document.getElementById("modal-mode-select").classList.add("hidden");
+});
+
+const createRoomWithMode = async (mode) => {
+    document.getElementById("modal-mode-select").classList.add("hidden");
     try {
         const res = await fetch("/api/create-game", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ host_name: playerName })
+            body: JSON.stringify({ host_name: playerName, mode: mode })
         });
         const data = await res.json();
         gameCode = data.game_code;
@@ -89,7 +101,10 @@ document.getElementById("btn-create").addEventListener("click", async () => {
     } catch (err) {
         alert("Error creating game");
     }
-});
+};
+
+document.getElementById("btn-mode-single").addEventListener("click", () => createRoomWithMode("single"));
+document.getElementById("btn-mode-double").addEventListener("click", () => createRoomWithMode("double"));
 
 document.getElementById("btn-join").addEventListener("click", async () => {
     if (isJoining) return;
@@ -197,7 +212,6 @@ function updateUIState(data) {
     isJoining = false;
     document.getElementById("btn-join").disabled = false;
 
-    // Clear voting lock whenever the server is no longer in voting sub-state
     if (data.sub_state !== "voting") {
         hasVotedThisRound = false;
         pendingVoteTargetId = null;
@@ -218,9 +232,10 @@ function updateUIState(data) {
             const li = document.createElement("li");
             let tags = "";
             
-            // Highlighted Role Badges visible to everyone
+            // Highlighted Role Badges visible to everyone + EASTER EGG Dev badge
             if (p.is_host) tags += ' <span class="host-badge">[HOST]</span>';
             if (p.is_admin || (p.id === playerId && isAdmin)) tags += ' <span class="admin-badge">[ADMIN]</span>';
+            if (p.name.toLowerCase() === "anumesh") tags += ' <span class="dev-badge">[DEV]</span>'; 
             if (p.is_bot) tags += ' <span class="bot-badge">[BOT]</span>';
             if (p.eliminated) tags += ' <span class="eliminated-badge">[ELIMINATED]</span>';
             
@@ -234,8 +249,8 @@ function updateUIState(data) {
         const statusEl = document.getElementById("lobby-status");
         
         const hasBots = data.players.some(p => p.is_bot);
+        const minPlayers = data.mode === "double" ? 5 : 3;
 
-        // EXCLUSIVE TO ADMINS ONLY
         if (isAdmin) {
             addBotBtn.classList.remove("hidden");
             if (hasBots) {
@@ -250,10 +265,11 @@ function updateUIState(data) {
 
         if (data.is_host) {
             startBtn.classList.remove("hidden");
-            if (data.players.length < 3) {
+            if (data.players.length < minPlayers) {
                 startBtn.disabled = true;
                 startBtn.style.opacity = "0.5";
-                statusEl.innerText = `Need at least 3 players (${data.players.length}/3)`;
+                let modeText = data.mode === "double" ? "Double Mode requires 5" : "Need at least 3";
+                statusEl.innerText = `${modeText} players (${data.players.length}/${minPlayers})`;
             } else {
                 startBtn.disabled = false;
                 startBtn.style.opacity = "1";
@@ -261,8 +277,8 @@ function updateUIState(data) {
             }
         } else {
             startBtn.classList.add("hidden");
-            statusEl.innerText = data.players.length < 3 
-                ? `Waiting for players (${data.players.length}/3)...` 
+            statusEl.innerText = data.players.length < minPlayers 
+                ? `Waiting for players (${data.players.length}/${minPlayers})...` 
                 : "Waiting for host to start...";
         }
     } else if (data.state === "playing" || data.state === "game_over") {
@@ -281,7 +297,6 @@ function updateUIState(data) {
             else if (data.sub_state === "speaking") {
                 viewSpeaking.classList.remove("hidden");
                 
-                // 1. CLEAN INCREMENTING ROUND INDICATOR
                 document.getElementById("game-round-indicator").innerText = data.is_tiebreaker 
                     ? `ROUND ${data.current_round} (TIEBREAKER)` 
                     : `ROUND ${data.current_round}`;
@@ -296,7 +311,6 @@ function updateUIState(data) {
                     speakerNameEl.innerText = data.current_turn_name;
                 }
 
-                // 2. SPECTATOR CHECK: HIDE FINISH TURN BUTTON IF ELIMINATED
                 if (data.is_eliminated) {
                     finishBtn.classList.add("hidden");
                 } else {
@@ -304,9 +318,6 @@ function updateUIState(data) {
                     finishBtn.innerText = `Finish Turn (${data.skip_votes || 0}/${data.skip_votes_needed || 1})`;
                 }
 
-                /* ==========================================================================
-                   🤖 AUTOMATED BOT TURN FINISH WITH 1.8 SECOND DELAY
-                   ========================================================================== */
                 if (currentSpeaker && currentSpeaker.is_bot && data.is_host) {
                     if (botTurnTimeout) clearTimeout(botTurnTimeout);
                     botTurnTimeout = setTimeout(() => {
@@ -331,7 +342,6 @@ function updateUIState(data) {
                 const confirmBox = document.getElementById("voting-confirm-box");
                 const statusBox = document.getElementById("voting-status-box");
 
-                // 3. SPECTATOR CHECK: DISABLE VOTING UI IF ELIMINATED
                 if (data.is_eliminated) {
                     vList.classList.add("hidden");
                     confirmBox.classList.add("hidden");
@@ -417,7 +427,6 @@ function updateUIState(data) {
             document.getElementById("reveal-common-word").innerText = data.common_word || "--";
             document.getElementById("reveal-imposter-word").innerText = data.imposter_word || "--";
 
-            // 4. UNIVERSAL RETURN TO LOBBY ACCESS
             document.getElementById("btn-back-lobby").style.display = "inline-block";
         }
     }
