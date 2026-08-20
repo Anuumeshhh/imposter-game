@@ -10,6 +10,7 @@ let pendingVoteTargetName = "";
 let hasVotedThisRound = false;
 let pendingModalAction = null;
 let botTurnTimeout = null;
+let currentTurnId = null; 
 
 const screenName = document.getElementById("screen-name");
 const screenMenu = document.getElementById("screen-menu");
@@ -27,7 +28,6 @@ const viewGameover = document.getElementById("view-gameover");
    ========================================================================== */
 document.getElementById("btn-admin-access").addEventListener("click", () => {
     const inputCode = prompt("Enter Developer Admin Passcode:");
-    // Added a secret bypass passcode easter egg for your group!
     if (inputCode && (inputCode.trim().toLowerCase() === "aurora" || inputCode.trim().toLowerCase() === "kaloaringal")) {
         isAdmin = true;
         alert("👑 Admin Perks Activated!");
@@ -157,7 +157,11 @@ document.getElementById("btn-remove-bot").addEventListener("click", () => {
 });
 
 document.getElementById("btn-finish-turn").addEventListener("click", () => {
-    if (ws) ws.send(JSON.stringify({ action: "finish_turn" }));
+    if (currentTurnId === playerId) {
+        if (ws) ws.send(JSON.stringify({ action: "finish_turn" }));
+    } else {
+        alert("You aren't allowed to press others' button!");
+    }
 });
 
 function resetToMenu() {
@@ -172,6 +176,7 @@ function resetToMenu() {
     hasVotedThisRound = false;
     pendingVoteTargetId = null;
     pendingVoteTargetName = "";
+    currentTurnId = null;
     document.getElementById("btn-join").disabled = false;
     
     screenLobby.classList.add("hidden");
@@ -232,7 +237,6 @@ function updateUIState(data) {
             const li = document.createElement("li");
             let tags = "";
             
-            // Highlighted Role Badges visible to everyone + EASTER EGG Dev badge
             if (p.is_host) tags += ' <span class="host-badge">[HOST]</span>';
             if (p.is_admin || (p.id === playerId && isAdmin)) tags += ' <span class="admin-badge">[ADMIN]</span>';
             if (p.name.toLowerCase() === "anumesh") tags += ' <span class="dev-badge">[DEV]</span>'; 
@@ -305,6 +309,8 @@ function updateUIState(data) {
                 const finishBtn = document.getElementById("btn-finish-turn");
                 const currentSpeaker = (data.players || []).find(p => p.id === data.current_turn_id);
 
+                currentTurnId = data.current_turn_id;
+
                 if (data.current_turn_id === playerId) {
                     speakerNameEl.innerText = "YOUR TURN!";
                 } else {
@@ -315,7 +321,7 @@ function updateUIState(data) {
                     finishBtn.classList.add("hidden");
                 } else {
                     finishBtn.classList.remove("hidden");
-                    finishBtn.innerText = `Finish Turn (${data.skip_votes || 0}/${data.skip_votes_needed || 1})`;
+                    finishBtn.innerText = "Finish Turn"; 
                 }
 
                 if (currentSpeaker && currentSpeaker.is_bot && data.is_host) {
