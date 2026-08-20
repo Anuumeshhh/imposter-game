@@ -19,7 +19,7 @@ class Player:
         self.is_bot = is_bot
         self.eliminated = False
         self.word = ""
-        self.vote = None  # None, target_id, or "SKIP"
+        self.vote = None 
         self.websocket: Optional[WebSocket] = None
 
     def to_dict(self):
@@ -34,21 +34,22 @@ class Player:
 
 
 class Room:
-    def __init__(self, code: str):
+    def __init__(self, code: str, mode: str = "single"):
         self.code = code
         self.players: Dict[str, Player] = {}
-        self.state = "lobby"  # lobby, playing, game_over
-        self.sub_state = "reveal"  # reveal, speaking, announcement, voting
+        self.state = "lobby" 
+        self.sub_state = "reveal" 
         
-        self.total_speaking_rounds = 1  # 1, 2, 3, 4...
-        self.current_cycle_round = 1    # 1 or 2
+        self.mode = mode 
+        self.total_speaking_rounds = 1 
+        self.current_cycle_round = 1    
         self.is_tiebreaker = False
         
         self.current_turn_index = 0
         self.timer = 0
         self.timer_task: Optional[asyncio.Task] = None
 
-        self.imposter_id: Optional[str] = None
+        self.imposter_ids: List[str] = []
         self.common_word = ""
         self.imposter_word = ""
 
@@ -74,6 +75,8 @@ class Room:
         active_players = self.get_active_players()
         current_speaker = active_players[self.current_turn_index] if active_players and self.current_turn_index < len(active_players) else None
 
+        imposter_names = [self.players[imp_id].name for imp_id in self.imposter_ids if imp_id in self.players]
+
         for p in list(self.players.values()):
             if p.is_bot or not p.websocket:
                 continue
@@ -88,6 +91,7 @@ class Room:
                 "game_code": self.code,
                 "state": self.state,
                 "sub_state": self.sub_state,
+                "mode": self.mode,
                 "is_host": p.is_host,
                 "timer": self.timer,
                 "players": [pl.to_dict() for pl in self.players.values()],
@@ -105,7 +109,7 @@ class Room:
                 "my_vote_name": target_voted_name,
                 "winner": self.winner,
                 "end_msg": self.end_msg,
-                "imposter_name": self.players[self.imposter_id].name if self.imposter_id in self.players else "Unknown",
+                "imposter_name": ", ".join(imposter_names) if imposter_names else "Unknown",
                 "common_word": self.common_word,
                 "imposter_word": self.imposter_word,
             }
@@ -131,11 +135,13 @@ class Room:
 
         self.common_word, self.imposter_word = get_random_word_pair()
         player_list = list(self.players.values())
-        imposter = random.choice(player_list)
-        self.imposter_id = imposter.id
+        
+        num_imposters = 2 if self.mode == "double" and len(player_list) >= 5 else 1
+        imposters = random.sample(player_list, num_imposters)
+        self.imposter_ids = [imp.id for imp in imposters]
 
         for p in player_list:
-            p.word = self.imposter_word if p.id == self.imposter_id else self.common_word
+            p.word = self.imposter_word if p.id in self.imposter_ids else self.common_word
 
         self.start_phase_timer(10, self.start_speaking_round)
 
@@ -271,19 +277,30 @@ class Room:
         eliminated_player = self.players[eliminated_id]
         eliminated_player.eliminated = True
 
-        if eliminated_id == self.imposter_id:
-            self.end_game("crew", f"Crewmates won! {eliminated_player.name} was the Imposter!")
+        active_imposters = [p for p in self.get_active_players() if p.id in self.imposter_ids]
+        active_after = self.get_active_players()
+
+        if len(active_imposters) == 0:
+            if self.mode == "double":
+                self.end_game("crew", "Crewmates won! All Imposters were voted out!")
+            else:
+                self.end_game("crew", f"Crewmates won! {eliminated_player.name} was the Imposter!")
             return
 
-        active_after = self.get_active_players()
-        if len(active_after) <= 3:
-            self.end_game("imposter", f"{eliminated_player.name} was NOT the Imposter! Imposter wins!")
+        if len(active_after) <= 3 and len(active_imposters) >= 1:
+            if eliminated_id in self.imposter_ids:
+                msg = f"{eliminated_player.name} was an Imposter, but 3 or fewer players remain! Imposters win!"
+            else:
+                msg = f"{eliminated_player.name} was NOT an Imposter! Imposters win!"
+            self.end_game("imposter", msg)
             return
 
         self.is_tiebreaker = False
         self.current_cycle_round = 1
         self.total_speaking_rounds += 1
-        self.announcement_text = f"{eliminated_player.name} was NOT the Imposter! Starting Round {self.total_speaking_rounds}."
+
+        was_imp_text = "an Imposter" if eliminated_id in self.imposter_ids else "NOT an Imposter"
+        self.announcement_text = f"{eliminated_player.name} was {was_imp_text}! Starting Round {self.total_speaking_rounds}."
         self.sub_state = "announcement"
         self.start_phase_timer(5, self.start_speaking_round)
 
@@ -313,9 +330,9 @@ class GameManager:
     def __init__(self):
         self.rooms: Dict[str, Room] = {}
 
-    def create_room(self, host_name: str) -> tuple[Room, Player]:
+    def create_room(self, host_name: str, mode: str = "single") -> tuple[Room, Player]:
         code = "".join(random.choices("ABCDEFGHIJKLMNOPQRSTUVWXYZ", k=4))
-        room = Room(code)
+        room = Room(code, mode)
         host_player = room.add_player(host_name, is_host=True)
         self.rooms[code] = room
         return room, host_player
