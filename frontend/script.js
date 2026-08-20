@@ -32,7 +32,7 @@ document.getElementById("btn-admin-access").addEventListener("click", () => {
         alert("👑 Admin Perks Activated!");
         document.getElementById("btn-admin-access").classList.add("hidden");
         
-        // Notify backend so every player in the room sees  [ADMIN] tag
+        // Notify backend so every player in the room sees [ADMIN] tag
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ action: "activate_admin" }));
         }
@@ -222,6 +222,7 @@ function updateUIState(data) {
             if (p.is_host) tags += ' <span class="host-badge">[HOST]</span>';
             if (p.is_admin || (p.id === playerId && isAdmin)) tags += ' <span class="admin-badge">[ADMIN]</span>';
             if (p.is_bot) tags += ' <span class="bot-badge">[BOT]</span>';
+            if (p.eliminated) tags += ' <span class="eliminated-badge">[ELIMINATED]</span>';
             
             li.innerHTML = `● <strong>${p.name}</strong>${tags}`;
             list.appendChild(li);
@@ -234,7 +235,7 @@ function updateUIState(data) {
         
         const hasBots = data.players.some(p => p.is_bot);
 
-        // EXCLUSIVE TO ADMINS ONLY (Independent of Host status)
+        // EXCLUSIVE TO ADMINS ONLY
         if (isAdmin) {
             addBotBtn.classList.remove("hidden");
             if (hasBots) {
@@ -279,15 +280,28 @@ function updateUIState(data) {
             } 
             else if (data.sub_state === "speaking") {
                 viewSpeaking.classList.remove("hidden");
-                document.getElementById("game-round-indicator").innerText = `ROUND ${data.current_round}/${data.total_rounds}`;
+                
+                // 1. CLEAN INCREMENTING ROUND INDICATOR
+                document.getElementById("game-round-indicator").innerText = data.is_tiebreaker 
+                    ? `ROUND ${data.current_round} (TIEBREAKER)` 
+                    : `ROUND ${data.current_round}`;
                 
                 const speakerNameEl = document.getElementById("speaker-name");
+                const finishBtn = document.getElementById("btn-finish-turn");
                 const currentSpeaker = (data.players || []).find(p => p.id === data.current_turn_id);
 
                 if (data.current_turn_id === playerId) {
                     speakerNameEl.innerText = "YOUR TURN!";
                 } else {
                     speakerNameEl.innerText = data.current_turn_name;
+                }
+
+                // 2. SPECTATOR CHECK: HIDE FINISH TURN BUTTON IF ELIMINATED
+                if (data.is_eliminated) {
+                    finishBtn.classList.add("hidden");
+                } else {
+                    finishBtn.classList.remove("hidden");
+                    finishBtn.innerText = `Finish Turn (${data.skip_votes || 0}/${data.skip_votes_needed || 1})`;
                 }
 
                 /* ==========================================================================
@@ -301,9 +315,6 @@ function updateUIState(data) {
                         }
                     }, 1800);
                 }
-                
-                document.getElementById("btn-finish-turn").innerText = 
-                    `Finish Turn (${data.skip_votes || 0}/${data.skip_votes_needed || 1})`;
 
                 document.getElementById("reminder-word").innerText = data.my_word;
             } 
@@ -320,7 +331,15 @@ function updateUIState(data) {
                 const confirmBox = document.getElementById("voting-confirm-box");
                 const statusBox = document.getElementById("voting-status-box");
 
-                if (hasVotedThisRound || data.my_vote) {
+                // 3. SPECTATOR CHECK: DISABLE VOTING UI IF ELIMINATED
+                if (data.is_eliminated) {
+                    vList.classList.add("hidden");
+                    confirmBox.classList.add("hidden");
+                    statusBox.classList.remove("hidden");
+                    document.getElementById("voting-subtext").classList.add("hidden");
+                    document.getElementById("voted-status-text").innerText = "👻 You are eliminated. Spectating voting phase...";
+                }
+                else if (hasVotedThisRound || data.my_vote) {
                     vList.classList.add("hidden");
                     confirmBox.classList.add("hidden");
                     statusBox.classList.remove("hidden");
@@ -398,7 +417,8 @@ function updateUIState(data) {
             document.getElementById("reveal-common-word").innerText = data.common_word || "--";
             document.getElementById("reveal-imposter-word").innerText = data.imposter_word || "--";
 
-            document.getElementById("btn-back-lobby").style.display = data.is_host ? "inline-block" : "none";
+            // 4. UNIVERSAL RETURN TO LOBBY ACCESS
+            document.getElementById("btn-back-lobby").style.display = "inline-block";
         }
     }
 }
