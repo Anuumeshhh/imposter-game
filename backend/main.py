@@ -17,15 +17,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Root endpoint to serve index.html
+
 @app.get("/")
 async def read_index():
-    # Adjust path if index.html is located in a root or public directory
+
     if os.path.exists("index.html"):
         return FileResponse("index.html")
     return {"status": "Backend running", "message": "index.html not found"}
 
-# Optional: Mount static folder if CSS/JS are in a subfolder (e.g., /static)
 if os.path.exists("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
