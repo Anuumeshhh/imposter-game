@@ -32,7 +32,7 @@ document.getElementById("btn-admin-access").addEventListener("click", () => {
         alert("👑 Admin Perks Activated!");
         document.getElementById("btn-admin-access").classList.add("hidden");
         
-        // Notify backend so every player in the room sees your [ADMIN] tag
+        // Notify backend so every player in the room sees  [ADMIN] tag
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ action: "activate_admin" }));
         }
@@ -197,7 +197,7 @@ function updateUIState(data) {
     isJoining = false;
     document.getElementById("btn-join").disabled = false;
 
-    // FIX: Clear voting lock whenever the server is no longer in voting sub-state
+    // Clear voting lock whenever the server is no longer in voting sub-state
     if (data.sub_state !== "voting") {
         hasVotedThisRound = false;
         pendingVoteTargetId = null;
@@ -234,7 +234,8 @@ function updateUIState(data) {
         
         const hasBots = data.players.some(p => p.is_bot);
 
-        if (data.is_host && isAdmin) {
+        // EXCLUSIVE TO ADMINS ONLY (Independent of Host status)
+        if (isAdmin) {
             addBotBtn.classList.remove("hidden");
             if (hasBots) {
                 removeBotBtn.classList.remove("hidden");
