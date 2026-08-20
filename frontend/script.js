@@ -9,6 +9,7 @@ let pendingVoteTargetId = null;
 let pendingVoteTargetName = "";
 let hasVotedThisRound = false;
 let pendingModalAction = null;
+let botTurnTimeout = null;
 
 const screenName = document.getElementById("screen-name");
 const screenMenu = document.getElementById("screen-menu");
@@ -22,16 +23,15 @@ const viewVoting = document.getElementById("view-voting");
 const viewGameover = document.getElementById("view-gameover");
 
 /* ==========================================================================
-   🔑 password ya xa!!
+   🔑 ADMIN PASSCODE: 
    ========================================================================== */
-const ALLOWED_ADMIN_PASSCODES = ["Aurora", "jawardoo", "devkey"];
-
 document.getElementById("btn-admin-access").addEventListener("click", () => {
     const inputCode = prompt("Enter Developer Admin Passcode:");
-    if (inputCode && ALLOWED_ADMIN_PASSCODES.includes(inputCode.trim().toLowerCase())) {
+    if (inputCode && inputCode.trim().toLowerCase() === "aurora") {
         isAdmin = true;
-        alert("👑 Admin Perks Activated! .");
-        document.getElementById("btn-admin-access").innerText = "⚡ Admin Active 👑";
+        alert("👑 Admin Perks Activated!");
+        // Hide admin access button completely once activated
+        document.getElementById("btn-admin-access").classList.add("hidden");
     } else {
         alert("Incorrect passcode.");
     }
@@ -142,6 +142,7 @@ function resetToMenu() {
         ws.close();
         ws = null;
     }
+    if (botTurnTimeout) clearTimeout(botTurnTimeout);
     gameCode = "";
     playerId = "";
     isJoining = false;
@@ -193,7 +194,10 @@ function updateUIState(data) {
         list.innerHTML = "";
         data.players.forEach(p => {
             const li = document.createElement("li");
-            li.innerHTML = `● <strong>${p.name}</strong> ${p.is_bot ? '<span style="color:#00ffcc;font-size:11px;">[BOT]</span>' : ''}`;
+            const isMeAdmin = (p.id === playerId && isAdmin);
+            const crown = isMeAdmin ? ' 👑' : '';
+            const botBadge = p.is_bot ? ' <span class="bot-badge">[BOT]</span>' : '';
+            li.innerHTML = `● <strong>${p.name}${crown}</strong>${botBadge}`;
             list.appendChild(li);
         });
 
@@ -201,10 +205,7 @@ function updateUIState(data) {
         const addBotBtn = document.getElementById("btn-add-bot");
         const statusEl = document.getElementById("lobby-status");
         
-        /* ==========================================================================
-           🤖 ADD BOT BUTTON VISIBILITY CONTROL
-           Requirement: Must be the HOST AND active ADMIN to display.
-           ========================================================================== */
+        
         if (data.is_host && isAdmin) {
             addBotBtn.classList.remove("hidden");
         } else {
@@ -247,10 +248,22 @@ function updateUIState(data) {
                 document.getElementById("game-round-indicator").innerText = `ROUND ${data.current_round}/${data.total_rounds}`;
                 
                 const speakerNameEl = document.getElementById("speaker-name");
+                const currentSpeaker = (data.players || []).find(p => p.id === data.current_turn_id);
+
                 if (data.current_turn_id === playerId) {
                     speakerNameEl.innerText = "YOUR TURN!";
                 } else {
                     speakerNameEl.innerText = data.current_turn_name;
+                }
+
+                // AUTO-SKIP BOT TURN FOR TESTING
+                if (currentSpeaker && currentSpeaker.is_bot && data.is_host) {
+                    if (botTurnTimeout) clearTimeout(botTurnTimeout);
+                    botTurnTimeout = setTimeout(() => {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ action: "finish_turn" }));
+                        }
+                    }, 800);
                 }
                 
                 document.getElementById("btn-finish-turn").innerText = 
