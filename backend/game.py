@@ -230,10 +230,11 @@ class Room:
         vote_counts = {}
 
         for p in active:
-            if p.vote and p.vote != "SKIP":
+            if p.vote:
                 vote_counts[p.vote] = vote_counts.get(p.vote, 0) + 1
 
         eliminated_id = None
+        skip_wins = False
         is_tie = False
 
         if not vote_counts:
@@ -242,7 +243,11 @@ class Room:
             max_votes = max(vote_counts.values())
             top_voted = [pid for pid, cnt in vote_counts.items() if cnt == max_votes]
             if len(top_voted) == 1:
-                eliminated_id = top_voted[0]
+                winner = top_voted[0]
+                if winner == "SKIP":
+                    skip_wins = True
+                else:
+                    eliminated_id = winner
             else:
                 is_tie = True
 
@@ -252,6 +257,15 @@ class Room:
             self.announcement_text = f"It's a tie! Round {self.total_speaking_rounds} (Tiebreaker Speaking Round)"
             self.sub_state = "announcement"
             self.start_phase_timer(4, self.start_speaking_round)
+            return
+
+        if skip_wins:
+            self.is_tiebreaker = False
+            self.current_cycle_round = 1
+            self.total_speaking_rounds += 1
+            self.announcement_text = f"The group voted to skip. No one was eliminated. Starting Round {self.total_speaking_rounds}."
+            self.sub_state = "announcement"
+            self.start_phase_timer(5, self.start_speaking_round)
             return
 
         eliminated_player = self.players[eliminated_id]
