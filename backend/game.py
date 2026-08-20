@@ -1,402 +1,361 @@
+import asyncio
+import json
 import random
 import string
-import asyncio
-from typing import Dict, Any
-from fastapi import WebSocket
-from backend.words import WORD_PAIRS
+from typing import Dict, Optional
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from pydantic import BaseModel
 
-class GameManager:
-    def __init__(self):
-        self.games: Dict[str, Dict[str, Any]] = {}
-        self.connections: Dict[str, Dict[str, WebSocket]] = {}
-        self.tasks: Dict[str, asyncio.Task] = {}
+# Import word logic/list from word.py
+from words import get_random_word_pair  
 
-    def room_exists(self, game_code: str) -> bool:
-        return game_code in self.games
+app = FastAPI()
 
-    def create_room(self, host_id: str, host_name: str) -> str:
-        while True:
-            game_code = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
-            if game_code not in self.games:
-                break
+rooms: Dict[str, dict] = {}
 
-        self.games[game_code] = {
-            "host": host_id,
-            "players": {
-                host_id: {"name": host_name, "word": None, "is_imposter": False, "eliminated": False, "is_bot": False}
-            },
-            "state": "lobby",
-            "sub_state": "none",
-            "current_round": 1,
-            "total_rounds": 2,
-            "timer": 0,
-            "votes": {},
-            "skip_votes": set(),
-            "announcement_text": "",
-            "imposter_id": None,
-            "imposter_name": "",
-            "common_word": "",
-            "imposter_word": "",
-            "winner": None,
-            "end_msg": ""
-        }
-        self.connections[game_code] = {}
-        return game_code
+class CreateGameReq(BaseModel):
+    host_name: str
 
-    def add_player(self, game_code: str, player_id: str, player_name: str) -> bool:
-        if game_code not in self.games:
-            return False
-        game = self.games[game_code]
-        if game["state"] != "lobby":
-            return False
-        
-        if player_id in game["players"]:
-            return False
+class JoinGameReq(BaseModel):
+    game_code: str
+    player_name: str
 
-        game["players"][player_id] = {
-            "name": player_name,
-            "word": None,
-            "is_imposter": False,
-            "eliminated": False,
-            "is_bot": False
-        }
-        return True
+def generate_code(length=6):
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
-    def add_bot(self, game_code: str) -> bool:
-        if game_code not in self.games:
-            return False
-        game = self.games[game_code]
-        if game["state"] != "lobby":
-            return False
-        
-        bot_count = sum(1 for p in game["players"].values() if p.get("is_bot"))
-        bot_id = f"bot_{random.randint(1000, 9999)}"
-        bot_name = f"Bot {bot_count + 1} 🤖"
+def generate_id(length=8):
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
-        game["players"][bot_id] = {
-            "name": bot_name,
-            "word": None,
-            "is_imposter": False,
-            "eliminated": False,
-            "is_bot": True
-        }
-        return True
+@app.post("/api/create-game")
+async def create_game(req: CreateGameReq):
+    game_code = generate_code()
+    host_id = generate_id()
+    rooms[game_code] = {
+        "game_code": game_code,
+        "host_id": host_id,
+        "state": "lobby",
+        "sub_state": None,
+        "players": [
+            {
+                "id": host_id,
+                "name": req.host_name,
+                "ws": None,
+                "is_bot": False,
+                "is_admin": False,
+                "eliminated": False,
+                "vote": None
+            }
+        ],
+        "current_turn_index": 0,
+        "current_round": 1,
+        "total_rounds": 2,
+        "timer": 0,
+        "common_word": "",
+        "imposter_word": "",
+        "imposter_id": None,
+        "votes": {},
+        "skip_turn_votes": set()
+    }
+    return {"game_code": game_code, "player_id": host_id}
 
-    def start_game(self, game_code: str):
-        game = self.games[game_code]
-        players = game["players"]
-        
-        if len(players) < 3:
-            return False
+@app.post("/api/join-game")
+async def join_game(req: JoinGameReq):
+    code = req.game_code.upper()
+    if code not in rooms:
+        raise HTTPException(status_code=404, detail="Game not found")
+    
+    room = rooms[code]
+    if room["state"] != "lobby":
+        raise HTTPException(status_code=400, detail="Game already started")
 
-        pair = random.choice(WORD_PAIRS)
-        common_word = pair["word1"]
-        imposter_word = pair["word2"]
+    player_id = generate_id()
+    room["players"].append({
+        "id": player_id,
+        "name": req.player_name,
+        "ws": None,
+        "is_bot": False,
+        "is_admin": False,
+        "eliminated": False,
+        "vote": None
+    })
+    return {"game_code": code, "player_id": player_id}
 
-        player_ids = list(players.keys())
-        imposter_id = random.choice(player_ids)
+def reset_voting(room):
+    """Wipes all active votes across sets, tiebreakers, and new rounds."""
+    room["votes"] = {}
+    for p in room["players"]:
+        p["vote"] = None
 
-        game["imposter_id"] = imposter_id
-        game["imposter_name"] = players[imposter_id]["name"]
-        game["common_word"] = common_word
-        game["imposter_word"] = imposter_word
-
-        for pid, pdata in players.items():
-            if pid == imposter_id:
-                pdata["is_imposter"] = True
-                pdata["word"] = imposter_word
-            else:
-                pdata["is_imposter"] = False
-                pdata["word"] = common_word
-            pdata["eliminated"] = False
-
-        game["state"] = "playing"
-        game["sub_state"] = "reveal"
-        
-        if game_code in self.tasks:
-            self.tasks[game_code].cancel()
-        
-        self.tasks[game_code] = asyncio.create_task(self.run_game_loop(game_code))
-        return True
-
-    def check_game_over(self, game_code: str) -> bool:
-        game = self.games.get(game_code)
-        if not game or game["state"] != "playing":
-            return False
-
-        active_players = [pid for pid, p in game["players"].items() if not p["eliminated"]]
-        imposter_id = game["imposter_id"]
-
-        if imposter_id not in active_players:
-            game["state"] = "game_over"
-            game["winner"] = "crew"
-            game["end_msg"] = "The Imposter was eliminated!"
-            return True
-
-        crew_count = sum(1 for pid in active_players if not game["players"][pid]["is_imposter"])
-        if crew_count <= 1:
-            game["state"] = "game_over"
-            game["winner"] = "imposter"
-            game["end_msg"] = f"Imposter ({game['imposter_name']}) takes over!"
-            return True
-
-        return False
-
-    async def auto_handle_bots(self, game_code: str):
-        game = self.games.get(game_code)
-        if not game or game["state"] != "playing":
-            return
-
-        # Auto-finish bot turn
-        if game["sub_state"] == "speaking":
-            current_turn = game.get("current_turn_id")
-            if current_turn and game["players"].get(current_turn, {}).get("is_bot"):
-                await asyncio.sleep(1.5)
-                game["skip_votes"].add(current_turn)
-
-        # Auto-vote for bots
-        elif game["sub_state"] == "voting":
-            active_players = [pid for pid, p in game["players"].items() if not p["eliminated"]]
-            for pid, pdata in game["players"].items():
-                if pdata.get("is_bot") and not pdata["eliminated"] and pid not in game["votes"]:
-                    possible_targets = [p for p in active_players if p != pid] + ["SKIP"]
-                    game["votes"][pid] = random.choice(possible_targets)
-
-    async def run_game_loop(self, game_code: str):
-        try:
-            game = self.games[game_code]
+async def broadcast_room_state(game_code: str):
+    if game_code not in rooms:
+        return
+    room = rooms[game_code]
+    
+    for p in room["players"]:
+        if p["is_bot"] or p["ws"] is None:
+            continue
             
-            # 1. Reveal Phase
-            game["sub_state"] = "reveal"
-            game["timer"] = 5
-            await self.broadcast_room_state(game_code)
-            for _ in range(5):
-                await asyncio.sleep(1)
-                if game_code not in self.games or game["state"] != "playing": return
-                game["timer"] -= 1
-                await self.broadcast_room_state(game_code)
+        my_vote_target_id = room["votes"].get(p["id"])
+        my_vote_target_name = None
+        if my_vote_target_id == "SKIP":
+            my_vote_target_name = "Skip Vote"
+        elif my_vote_target_id:
+            target_p = next((tp for tp in room["players"] if tp["id"] == my_vote_target_id), None)
+            if target_p:
+                my_vote_target_name = target_p["name"]
 
-            max_rounds = 2
+        my_word = "???"
+        if room["state"] == "playing":
+            if p["id"] == room["imposter_id"]:
+                my_word = room["imposter_word"]
+            else:
+                my_word = room["common_word"]
 
-            while True:
-                # 2. Speaking Phase
-                for r in range(1, max_rounds + 1):
-                    game["sub_state"] = "speaking"
-                    game["current_round"] = r
-                    game["total_rounds"] = max_rounds
-                    
-                    active_players = [pid for pid, p in game["players"].items() if not p["eliminated"]]
-                    
-                    for pid in active_players:
-                        if game_code not in self.games or game["state"] != "playing": return
-                        if pid not in game["players"] or game["players"][pid]["eliminated"]: continue
+        current_speaker = None
+        if room["state"] == "playing" and room["sub_state"] == "speaking":
+            active_players = [ap for ap in room["players"] if not ap["eliminated"]]
+            if active_players and room["current_turn_index"] < len(active_players):
+                current_speaker = active_players[room["current_turn_index"]]
 
-                        game["current_turn_id"] = pid
-                        game["current_turn_name"] = game["players"][pid]["name"]
-                        game["skip_votes"] = set()
-                        game["timer"] = 30
-                        await self.broadcast_room_state(game_code)
+        payload = {
+            "type": "room_state",
+            "game_code": room["game_code"],
+            "state": room["state"],
+            "sub_state": room["sub_state"],
+            "is_host": (p["id"] == room["host_id"]),
+            "timer": room["timer"],
+            "current_round": room["current_round"],
+            "total_rounds": room["total_rounds"],
+            "my_word": my_word,
+            "current_turn_id": current_speaker["id"] if current_speaker else None,
+            "current_turn_name": current_speaker["name"] if current_speaker else None,
+            "skip_votes": len(room["skip_turn_votes"]),
+            "skip_votes_needed": (len([ap for ap in room["players"] if not ap["eliminated"]]) // 2) + 1,
+            "my_vote": my_vote_target_id,
+            "my_vote_name": my_vote_target_name,
+            "players": [
+                {
+                    "id": pl["id"],
+                    "name": pl["name"],
+                    "is_host": (pl["id"] == room["host_id"]),
+                    "is_admin": pl.get("is_admin", False),
+                    "is_bot": pl.get("is_bot", False),
+                    "eliminated": pl.get("eliminated", False)
+                } for pl in room["players"]
+            ]
+        }
 
-                        for _ in range(30):
-                            await self.auto_handle_bots(game_code)
-                            await asyncio.sleep(1)
-                            if game_code not in self.games or game["state"] != "playing": return
-                            
-                            cur_active = [p_id for p_id, p_val in game["players"].items() if not p_val["eliminated"]]
-                            needed = (len(cur_active) // 2) + 1
-                            if len(game["skip_votes"]) >= needed:
-                                break
+        if room["state"] == "game_over":
+            imposter_p = next((ip for ip in room["players"] if ip["id"] == room["imposter_id"]), None)
+            payload["winner"] = room.get("winner")
+            payload["end_msg"] = room.get("end_msg", "")
+            payload["imposter_name"] = imposter_p["name"] if imposter_p else "Unknown"
+            payload["common_word"] = room["common_word"]
+            payload["imposter_word"] = room["imposter_word"]
 
-                            game["timer"] -= 1
-                            await self.broadcast_room_state(game_code)
-
-                if self.check_game_over(game_code):
-                    await self.broadcast_room_state(game_code)
-                    break
-
-                # 3. Voting Announcement
-                game["sub_state"] = "announcement"
-                game["announcement_text"] = "VOTING TIME!"
-                game["timer"] = 3
-                await self.broadcast_room_state(game_code)
-                for _ in range(3):
-                    await asyncio.sleep(1)
-                    if game_code not in self.games or game["state"] != "playing": return
-                    game["timer"] -= 1
-                    await self.broadcast_room_state(game_code)
-
-                # 4. Voting Phase
-                game["sub_state"] = "voting"
-                game["timer"] = 35
-                game["votes"] = {}
-                await self.broadcast_room_state(game_code)
-
-                for _ in range(35):
-                    await self.auto_handle_bots(game_code)
-                    cur_active = [p_id for p_id, p_val in game["players"].items() if not p_val["eliminated"]]
-                    if len(game["votes"]) >= len(cur_active):
-                        break
-                    await asyncio.sleep(1)
-                    if game_code not in self.games or game["state"] != "playing": return
-                    game["timer"] -= 1
-                    await self.broadcast_room_state(game_code)
-
-                # 5. Tally Votes
-                tally = {}
-                skip_count = 0
-                for voter, target in game["votes"].items():
-                    if target == "SKIP":
-                        skip_count += 1
-                    else:
-                        tally[target] = tally.get(target, 0) + 1
-
-                top_voted = []
-                max_player_votes = 0
-                if tally:
-                    max_player_votes = max(tally.values())
-                    top_voted = [pid for pid, count in tally.items() if count == max_player_votes]
-
-                if max_player_votes == 0 or skip_count >= max_player_votes or len(top_voted) != 1:
-                    game["sub_state"] = "announcement"
-                    game["announcement_text"] = "VOTE SKIPPED! No one was eliminated."
-                    game["timer"] = 4
-                    await self.broadcast_room_state(game_code)
-                    for _ in range(4):
-                        await asyncio.sleep(1)
-                        if game_code not in self.games or game["state"] != "playing": return
-                        game["timer"] -= 1
-                        await self.broadcast_room_state(game_code)
-                    max_rounds = 1
-                else:
-                    eliminated_id = top_voted[0]
-                    game["players"][eliminated_id]["eliminated"] = True
-                    elim_name = game["players"][eliminated_id]["name"]
-
-                    if self.check_game_over(game_code):
-                        await self.broadcast_room_state(game_code)
-                        break
-                    else:
-                        game["sub_state"] = "announcement"
-                        game["announcement_text"] = f"{elim_name} was NOT the Imposter!"
-                        game["timer"] = 4
-                        await self.broadcast_room_state(game_code)
-                        for _ in range(4):
-                            await asyncio.sleep(1)
-                            if game_code not in self.games or game["state"] != "playing": return
-                            game["timer"] -= 1
-                            await self.broadcast_room_state(game_code)
-                        max_rounds = 2
-
-        except asyncio.CancelledError:
+        try:
+            await p["ws"].send_text(json.dumps(payload))
+        except Exception:
             pass
 
-    async def connect(self, game_code: str, player_id: str, websocket: WebSocket):
-        await websocket.accept()
-        if game_code not in self.connections:
-            self.connections[game_code] = {}
-        self.connections[game_code][player_id] = websocket
-        await self.broadcast_room_state(game_code)
+def start_next_turn(room):
+    active_players = [p for p in room["players"] if not p["eliminated"]]
+    room["skip_turn_votes"] = set()
+    
+    if room["current_turn_index"] + 1 < len(active_players):
+        room["current_turn_index"] += 1
+    else:
+        room["current_turn_index"] = 0
+        if room["current_round"] < room["total_rounds"]:
+            room["current_round"] += 1
+        else:
+            start_voting_phase(room)
 
-    def disconnect(self, game_code: str, player_id: str):
-        if game_code in self.connections and player_id in self.connections[game_code]:
-            del self.connections[game_code][player_id]
-        
-        if game_code in self.games:
-            game = self.games[game_code]
-            if player_id in game["players"]:
-                del game["players"][player_id]
-            
-            if game["state"] == "playing":
-                if self.check_game_over(game_code):
-                    asyncio.create_task(self.broadcast_room_state(game_code))
+def start_voting_phase(room):
+    room["sub_state"] = "voting"
+    reset_voting(room)
 
-            if game["host"] == player_id:
-                if game["players"]:
-                    game["host"] = list(game["players"].keys())[0]
+def process_voting_results(room):
+    active_players = [p for p in room["players"] if not p["eliminated"]]
+    vote_counts = {p["id"]: 0 for p in active_players}
+    skips = 0
+
+    for p in active_players:
+        if p["is_bot"] and p["id"] not in room["votes"]:
+            room["votes"][p["id"]] = "SKIP"
+
+    for voter_id, target_id in room["votes"].items():
+        if target_id == "SKIP":
+            skips += 1
+        elif target_id in vote_counts:
+            vote_counts[target_id] += 1
+
+    most_voted_id = None
+    max_votes = 0
+    is_tie = False
+
+    for target_id, count in vote_counts.items():
+        if count > max_votes:
+            max_votes = count
+            most_voted_id = target_id
+            is_tie = False
+        elif count == max_votes and max_votes > 0:
+            is_tie = True
+
+    if is_tie or max_votes <= skips or not most_voted_id:
+        room["sub_state"] = "speaking"
+        room["current_round"] = 1
+        room["total_rounds"] = 1
+        room["current_turn_index"] = 0
+        reset_voting(room)
+    else:
+        ejected_p = next((p for p in room["players"] if p["id"] == most_voted_id), None)
+        if ejected_p:
+            ejected_p["eliminated"] = True
+            if ejected_p["id"] == room["imposter_id"]:
+                room["state"] = "game_over"
+                room["winner"] = "crew"
+                room["end_msg"] = f"{ejected_p['name']} was the Imposter!"
+            else:
+                remaining_active = [p for p in room["players"] if not p["eliminated"]]
+                if len(remaining_active) <= 2:
+                    room["state"] = "game_over"
+                    room["winner"] = "imposter"
+                    room["end_msg"] = f"{ejected_p['name']} was innocent. Imposter took over!"
                 else:
-                    if game_code in self.tasks:
-                        self.tasks[game_code].cancel()
-                    del self.games[game_code]
+                    room["sub_state"] = "speaking"
+                    room["current_round"] = 1
+                    room["total_rounds"] = 2
+                    room["current_turn_index"] = 0
+                    reset_voting(room)
 
-    async def broadcast_room_state(self, game_code: str):
-        if game_code not in self.games:
-            return
-        
-        game = self.games[game_code]
-        conn_dict = self.connections.get(game_code, {})
+@app.websocket("/ws/{game_code}/{player_id}")
+async def websocket_endpoint(websocket: WebSocket, game_code: str, player_id: str):
+    await websocket.accept()
+    if game_code not in rooms:
+        await websocket.close()
+        return
 
-        active_players = [pid for pid, p in game["players"].items() if not p["eliminated"]]
-        skip_votes_needed = (len(active_players) // 2) + 1 if active_players else 1
+    room = rooms[game_code]
+    player = next((p for p in room["players"] if p["id"] == player_id), None)
+    if not player:
+        await websocket.close()
+        return
 
-        for pid, ws in conn_dict.items():
-            player_info = game["players"].get(pid, {})
-            voted_target_id = game.get("votes", {}).get(pid)
-            voted_target_name = game["players"].get(voted_target_id, {}).get("name", "") if voted_target_id else ""
+    player["ws"] = websocket
+    await broadcast_room_state(game_code)
 
-            state_data = {
-                "type": "room_state",
-                "game_code": game_code,
-                "is_host": (game["host"] == pid),
-                "state": game["state"],
-                "sub_state": game["sub_state"],
-                "players": [{ "id": p_id, "name": p_val["name"], "eliminated": p_val["eliminated"], "is_bot": p_val.get("is_bot", False) } for p_id, p_val in game["players"].items()],
-                "my_word": player_info.get("word", ""),
-                "current_turn_id": game.get("current_turn_id"),
-                "current_turn_name": game.get("current_turn_name"),
-                "current_round": game.get("current_round", 1),
-                "total_rounds": game.get("total_rounds", 2),
-                "skip_votes": len(game.get("skip_votes", set())),
-                "skip_votes_needed": skip_votes_needed,
-                "my_vote": voted_target_id,
-                "my_vote_name": voted_target_name,
-                "announcement_text": game.get("announcement_text", ""),
-                "winner": game.get("winner"),
-                "end_msg": game.get("end_msg"),
-                "imposter_name": game.get("imposter_name"),
-                "common_word": game.get("common_word"),
-                "imposter_word": game.get("imposter_word"),
-                "timer": game.get("timer", 0)
-            }
-            try:
-                await ws.send_json(state_data)
-            except:
-                pass
+    try:
+        while True:
+            data_str = await websocket.receive_text()
+            data = json.loads(data_str)
+            action = data.get("action")
 
-    async def handle_action(self, game_code: str, player_id: str, data: dict):
-        action = data.get("action")
-        game = self.games.get(game_code)
-        if not game:
-            return
+            if action == "activate_admin":
+                player["is_admin"] = True
+                await broadcast_room_state(game_code)
 
-        if action == "start_game" and game["host"] == player_id:
-            success = self.start_game(game_code)
-            if success:
-                await self.broadcast_room_state(game_code)
+            elif action == "add_bot":
+                if player["id"] == room["host_id"]:
+                    bot_num = len([p for p in room["players"] if p["is_bot"]]) + 1
+                    room["players"].append({
+                        "id": f"bot_{generate_id(4)}",
+                        "name": f"Bot {bot_num}",
+                        "ws": None,
+                        "is_bot": True,
+                        "is_admin": False,
+                        "eliminated": False,
+                        "vote": None
+                    })
+                    await broadcast_room_state(game_code)
 
-        elif action == "add_bot" and game["host"] == player_id:
-            self.add_bot(game_code)
-            await self.broadcast_room_state(game_code)
+            elif action == "remove_bot":
+                if player["id"] == room["host_id"]:
+                    bot = next((p for p in reversed(room["players"]) if p["is_bot"]), None)
+                    if bot:
+                        room["players"].remove(bot)
+                        await broadcast_room_state(game_code)
 
-        elif action == "finish_turn" and game["sub_state"] == "speaking":
-            if not game["players"][player_id]["eliminated"]:
-                game["skip_votes"].add(player_id)
-                await self.broadcast_room_state(game_code)
+            elif action == "start_game":
+                if player["id"] == room["host_id"] and len(room["players"]) >= 3:
+                    # Fetch pair from word.py helper or list
+                    common, imposter_w = get_random_word_pair()
+                    room["common_word"] = common
+                    room["imposter_word"] = imposter_w
 
-        elif action == "vote" and game["sub_state"] == "voting":
-            target_id = data.get("target_id")
-            if (target_id in game["players"] or target_id == "SKIP") and not game["players"][player_id]["eliminated"]:
-                game["votes"][player_id] = target_id
-                await self.broadcast_room_state(game_code)
+                    imposter = random.choice(room["players"])
+                    room["imposter_id"] = imposter["id"]
+                    
+                    for p in room["players"]:
+                        p["eliminated"] = False
+                        p["vote"] = None
+                    
+                    room["state"] = "playing"
+                    room["sub_state"] = "reveal"
+                    room["current_round"] = 1
+                    room["total_rounds"] = 2
+                    room["current_turn_index"] = 0
+                    reset_voting(room)
+                    await broadcast_room_state(game_code)
 
-        elif action == "leave_game":
-            self.disconnect(game_code, player_id)
-            await self.broadcast_room_state(game_code)
+                    await asyncio.sleep(4)
+                    if room["state"] == "playing" and room["sub_state"] == "reveal":
+                        room["sub_state"] = "speaking"
+                        await broadcast_room_state(game_code)
 
-        elif action == "back_to_lobby" and game["host"] == player_id:
-            if game_code in self.tasks:
-                self.tasks[game_code].cancel()
-            game["state"] = "lobby"
-            game["sub_state"] = "none"
-            await self.broadcast_room_state(game_code)
+            elif action == "finish_turn":
+                if room["sub_state"] == "speaking":
+                    active_players = [p for p in room["players"] if not p["eliminated"]]
+                    current_speaker = active_players[room["current_turn_index"]] if active_players else None
 
-game_manager = GameManager()
+                    if (current_speaker and player["id"] == current_speaker["id"]) or player["is_bot"]:
+                        start_next_turn(room)
+                    else:
+                        room["skip_turn_votes"].add(player["id"])
+                        needed = (len(active_players) // 2) + 1
+                        if len(room["skip_turn_votes"]) >= needed:
+                            start_next_turn(room)
+                            
+                    await broadcast_room_state(game_code)
+
+            elif action == "vote":
+                if room["sub_state"] == "voting":
+                    target_id = data.get("target_id")
+                    room["votes"][player["id"]] = target_id
+                    player["vote"] = target_id
+
+                    active_players = [p for p in room["players"] if not p["eliminated"]]
+                    human_votes = len(room["votes"])
+                    bot_count = len([p for p in active_players if p["is_bot"]])
+
+                    if human_votes + bot_count >= len(active_players):
+                        process_voting_results(room)
+
+                    await broadcast_room_state(game_code)
+
+            elif action == "back_to_lobby":
+                if player["id"] == room["host_id"]:
+                    room["state"] = "lobby"
+                    room["sub_state"] = None
+                    reset_voting(room)
+                    await broadcast_room_state(game_code)
+
+            elif action == "leave_game":
+                room["players"].remove(player)
+                if not room["players"]:
+                    rooms.pop(game_code, None)
+                else:
+                    if room["host_id"] == player["id"]:
+                        room["host_id"] = room["players"][0]["id"]
+                    await broadcast_room_state(game_code)
+                break
+
+    except WebSocketDisconnect:
+        if player in room["players"]:
+            room["players"].remove(player)
+            if not room["players"]:
+                rooms.pop(game_code, None)
+            else:
+                if room["host_id"] == player["id"]:
+                    room["host_id"] = room["players"][0]["id"]
+                await broadcast_room_state(game_code)
