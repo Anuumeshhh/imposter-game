@@ -13,7 +13,7 @@
             <div class="modal-box">
                 <h3 id="modal-title">Confirmation</h3>
                 <p id="modal-desc">Are you sure?</p>
-                <div class="modal-actions">
+                <div class="modal-actions" style="margin-top: 16px;">
                     <button id="modal-btn-confirm" class="btn btn-danger">Confirm</button>
                     <button id="modal-btn-cancel" class="btn btn-secondary">Cancel</button>
                 </div>
@@ -30,7 +30,7 @@
         <!-- 2. MENU SCREEN -->
         <div id="screen-menu" class="card hidden">
             <h2 id="welcome-msg">Welcome</h2>
-            <button id="btn-change-name-menu" class="btn btn-small">Change Name</button>
+            <button id="btn-change-name-menu" class="btn btn-small btn-secondary">Change Name</button>
             <hr>
             <button id="btn-create" class="btn btn-primary">Create New Room</button>
             <div class="join-box">
@@ -43,12 +43,11 @@
 
         <!-- 3. LOBBY SCREEN -->
         <div id="screen-lobby" class="card hidden">
-            <h2>Room Code: <span id="display-code">------</span></h2>
-            <p id="lobby-status">Waiting for players...</p>
+            <h2>Room Code: <span id="display-code" style="color:#00f2fe;">------</span></h2>
+            <p id="lobby-status" style="font-size:14px; opacity:0.8;">Waiting for players...</p>
             <ul id="player-list" class="player-list"></ul>
             <div class="lobby-controls">
                 <button id="btn-start" class="btn btn-primary hidden">Start Game</button>
-                <!-- ADD BOT BUTTON (ONLY VISIBLE TO ADMIN HOST) -->
                 <button id="btn-add-bot" class="btn btn-accent hidden">🤖 Add Bot</button>
                 <button id="btn-leave-lobby" class="btn btn-danger">Leave Room</button>
             </div>
@@ -56,9 +55,9 @@
 
         <!-- 4. GAME SCREEN -->
         <div id="screen-game" class="card hidden">
-            <div class="game-header">
-                <span id="game-round-indicator">ROUND 1</span>
-                <span id="turn-timer" class="timer">0s</span>
+            <div class="game-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <span id="game-round-indicator" style="font-size:13px; font-weight:700; color:#00f2fe;">ROUND 1</span>
+                <span id="turn-timer" class="timer" style="font-size:16px; font-weight:700; color:#ffb300;">0s</span>
             </div>
 
             <!-- REVEAL VIEW -->
@@ -69,9 +68,9 @@
 
             <!-- SPEAKING VIEW -->
             <div id="view-speaking" class="game-view hidden">
-                <p>Current Turn:</p>
-                <h2 id="speaker-name">---</h2>
-                <p class="subtext">Your word: <strong id="reminder-word">---</strong></p>
+                <p style="font-size:14px; opacity:0.8;">Current Turn:</p>
+                <h2 id="speaker-name" style="color:#00f2fe; margin-top:4px;">---</h2>
+                <p class="subtext" style="margin:12px 0;">Your word: <strong id="reminder-word" style="color:#ffb300;">---</strong></p>
                 <button id="btn-finish-turn" class="btn btn-primary">Finish Turn</button>
             </div>
 
@@ -83,14 +82,14 @@
             <!-- VOTING VIEW -->
             <div id="view-voting" class="game-view hidden">
                 <h2>Cast Your Vote</h2>
-                <p id="voting-subtext">Who do you think is the imposter?</p>
+                <p id="voting-subtext" style="font-size:14px; opacity:0.8;">Who do you think is the imposter?</p>
                 <div id="voting-list" class="voting-grid"></div>
-                <div id="voting-confirm-box" class="hidden">
-                    <p id="voting-confirm-text"></p>
+                <div id="voting-confirm-box" class="hidden" style="margin-top:16px;">
+                    <p id="voting-confirm-text" style="margin-bottom:12px;"></p>
                     <button id="btn-confirm-vote" class="btn btn-danger">Confirm Vote</button>
                     <button id="btn-cancel-vote" class="btn btn-secondary">Cancel</button>
                 </div>
-                <div id="voting-status-box" class="hidden">
+                <div id="voting-status-box" class="hidden" style="margin-top:16px;">
                     <p id="voted-status-text">Vote submitted. Waiting for others...</p>
                 </div>
             </div>
@@ -99,11 +98,11 @@
             <div id="view-gameover" class="game-view hidden">
                 <h1 id="game-result-title">GAME OVER</h1>
                 <h3 id="game-result-sub"></h3>
-                <p id="game-result-desc"></p>
-                <div class="summary-box">
-                    <p>Imposter: <strong id="reveal-imposter-name">--</strong></p>
-                    <p>Common Word: <strong id="reveal-common-word">--</strong></p>
-                    <p>Imposter Word: <strong id="reveal-imposter-word">--</strong></p>
+                <p id="game-result-desc" style="margin-bottom:16px;"></p>
+                <div class="summary-box" style="background:rgba(13,14,21,0.6); padding:16px; border-radius:12px; margin-bottom:16px; text-align:left;">
+                    <p>Imposter: <strong id="reveal-imposter-name" style="color:#ff2a5f;">--</strong></p>
+                    <p>Common Word: <strong id="reveal-common-word" style="color:#00f2fe;">--</strong></p>
+                    <p>Imposter Word: <strong id="reveal-imposter-word" style="color:#ffb300;">--</strong></p>
                 </div>
                 <button id="btn-back-lobby" class="btn btn-primary">Back to Lobby</button>
             </div>
