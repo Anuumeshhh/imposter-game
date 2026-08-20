@@ -2,12 +2,11 @@ import asyncio
 import json
 import random
 import string
-from typing import Dict, Optional
+from typing import Dict
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
 
-# Import word logic/list from word.py
-from words import get_random_word_pair  
+from words import get_random_word_pair
 
 app = FastAPI()
 
@@ -81,7 +80,6 @@ async def join_game(req: JoinGameReq):
     return {"game_code": code, "player_id": player_id}
 
 def reset_voting(room):
-    """Wipes all active votes across sets, tiebreakers, and new rounds."""
     room["votes"] = {}
     for p in room["players"]:
         p["vote"] = None
@@ -123,6 +121,7 @@ async def broadcast_room_state(game_code: str):
             "state": room["state"],
             "sub_state": room["sub_state"],
             "is_host": (p["id"] == room["host_id"]),
+            "is_admin": p.get("is_admin", False),
             "timer": room["timer"],
             "current_round": room["current_round"],
             "total_rounds": room["total_rounds"],
@@ -256,7 +255,7 @@ async def websocket_endpoint(websocket: WebSocket, game_code: str, player_id: st
                 await broadcast_room_state(game_code)
 
             elif action == "add_bot":
-                if player["id"] == room["host_id"]:
+                if player.get("is_admin", False):
                     bot_num = len([p for p in room["players"] if p["is_bot"]]) + 1
                     room["players"].append({
                         "id": f"bot_{generate_id(4)}",
@@ -270,7 +269,7 @@ async def websocket_endpoint(websocket: WebSocket, game_code: str, player_id: st
                     await broadcast_room_state(game_code)
 
             elif action == "remove_bot":
-                if player["id"] == room["host_id"]:
+                if player.get("is_admin", False):
                     bot = next((p for p in reversed(room["players"]) if p["is_bot"]), None)
                     if bot:
                         room["players"].remove(bot)
@@ -278,7 +277,6 @@ async def websocket_endpoint(websocket: WebSocket, game_code: str, player_id: st
 
             elif action == "start_game":
                 if player["id"] == room["host_id"] and len(room["players"]) >= 3:
-                    # Fetch pair from word.py helper or list
                     common, imposter_w = get_random_word_pair()
                     room["common_word"] = common
                     room["imposter_word"] = imposter_w
