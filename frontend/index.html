@@ -8,7 +8,7 @@
 </head>
 <body>
     <div class="container">
-        <!-- MODAL OVERLAY -->
+        <!-- MODAL OVERLAY (CONFIRM) -->
         <div id="modal-overlay" class="modal-overlay hidden">
             <div class="modal-box">
                 <h3 id="modal-title">Confirmation</h3>
@@ -16,6 +16,19 @@
                 <div class="modal-actions" style="margin-top: 16px;">
                     <button id="modal-btn-confirm" class="btn btn-danger">Confirm</button>
                     <button id="modal-btn-cancel" class="btn btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL OVERLAY (MODE SELECT) -->
+        <div id="modal-mode-select" class="modal-overlay hidden">
+            <div class="modal-box">
+                <h3 id="mode-title">Select Game Mode</h3>
+                <p style="font-size: 13px; opacity: 0.8; margin-bottom: 16px;">How many imposters will be in the game?</p>
+                <div class="modal-actions" style="display:flex; flex-direction:column; gap:10px;">
+                    <button id="btn-mode-single" class="btn btn-primary">Single Imposter (Min 3)</button>
+                    <button id="btn-mode-double" class="btn btn-danger">Double Imposter (Min 5)</button>
+                    <button id="btn-mode-cancel" class="btn btn-secondary">Cancel</button>
                 </div>
             </div>
         </div>
@@ -101,7 +114,7 @@
                 <h3 id="game-result-sub"></h3>
                 <p id="game-result-desc" style="margin-bottom:16px;"></p>
                 <div class="summary-box" style="background:rgba(13,14,21,0.6); padding:16px; border-radius:12px; margin-bottom:16px; text-align:left;">
-                    <p>Imposter: <strong id="reveal-imposter-name" style="color:#ff2a5f;">--</strong></p>
+                    <p>Imposter(s): <strong id="reveal-imposter-name" style="color:#ff2a5f;">--</strong></p>
                     <p>Common Word: <strong id="reveal-common-word" style="color:#00f2fe;">--</strong></p>
                     <p>Imposter Word: <strong id="reveal-imposter-word" style="color:#ffb300;">--</strong></p>
                 </div>
