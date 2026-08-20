@@ -87,7 +87,7 @@ async def websocket_endpoint(websocket: WebSocket, game_code: str, player_id: st
                 target_id = data.get("target_id")
                 await room.record_vote(player_id, target_id)
 
-            elif action == "back_to_lobby" and player.is_host:
+            elif action == "back_to_lobby":
                 room.reset_to_lobby()
 
             elif action == "leave_game":
@@ -107,6 +107,5 @@ async def read_index():
     return {"status": "Backend running", "error": "frontend/index.html not found"}
 
 
-# Mount frontend directory for relative asset resolution (script.js, styles.css)
 if os.path.exists("frontend"):
     app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
