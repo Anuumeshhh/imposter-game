@@ -1,9 +1,27 @@
+import random
+
+# Word pairs format: (Common Word, Imposter Word)
 WORD_PAIRS = [
-    {"word1": "ROCK", "word2": "STONE", "difficulty": "easy"},
-    {"word1": "CAR", "word2": "BUS", "difficulty": "easy"},
-    {"word1": "LION", "word2": "TIGER", "difficulty": "medium"},
-    {"word1": "COFFEE", "word2": "TEA", "difficulty": "easy"},
-    {"word1": "BATMAN", "word2": "SPIDER-MAN", "difficulty": "medium"},
-    {"word1": "FOOTBALL", "word2": "BASKETBALL", "difficulty": "easy"},
-    {"word1": "PIZZA", "word2": "BURGER", "difficulty": "easy"},
+    ("Apple", "Pear"),
+    ("Dog", "Wolf"),
+    ("Pizza", "Burger"),
+    ("Coffee", "Tea"),
+    ("Airplane", "Helicopter"),
+    ("Guitar", "Violin"),
+    ("Doctor", "Nurse"),
+    ("Football", "Basketball"),
+    ("Cat", "Tiger"),
+    ("Sun", "Moon"),
+    ("Ocean", "Lake"),
+    ("Gold", "Silver"),
+    ("Phone", "Tablet"),
+    ("Pen", "Pencil"),
+    ("Bicycle", "Motorcycle"),
+    ("Movie", "Play"),
+    ("Shirt", "Jacket"),
+    ("Train", "Bus")
 ]
+
+def get_random_word_pair():
+    """Returns a tuple containing (common_word, imposter_word)."""
+    return random.choice(WORD_PAIRS)
