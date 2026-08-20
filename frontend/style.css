@@ -136,6 +136,24 @@ input:focus {
     font-size: 15px;
 }
 
+/* ==========================================================================
+   🏷️ HIGHLIGHTED ROLE BADGES
+   ========================================================================== */
+.admin-badge {
+    color: #ff2a5f;
+    font-size: 12px;
+    font-weight: bold;
+    margin-left: 6px;
+    text-shadow: 0 0 6px rgba(255, 42, 95, 0.4);
+}
+
+.host-badge {
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: bold;
+    margin-left: 6px;
+}
+
 .bot-badge {
     color: #00f2fe;
     font-size: 12px;
