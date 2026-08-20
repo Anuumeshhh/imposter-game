@@ -169,8 +169,6 @@ class Room:
         active = self.get_active_players()
         current_speaker = active[self.current_turn_index] if self.current_turn_index < len(active) else None
 
-        # UPDATED: Only progress the turn if the requester is the current speaker. 
-        # Ignored by backend if anyone else sends it.
         if current_speaker and player_id == current_speaker.id:
             await self.next_turn()
 
