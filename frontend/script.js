@@ -3,11 +3,11 @@ let playerId = "";
 let gameCode = "";
 let ws = null;
 let isJoining = false;
+let isAdmin = false;
 
 let pendingVoteTargetId = null;
 let pendingVoteTargetName = "";
 let hasVotedThisRound = false;
-
 let pendingModalAction = null;
 
 const screenName = document.getElementById("screen-name");
@@ -21,7 +21,22 @@ const viewAnnouncement = document.getElementById("view-announcement");
 const viewVoting = document.getElementById("view-voting");
 const viewGameover = document.getElementById("view-gameover");
 
-// Modal control
+/* ==========================================================================
+   🔑 password ya xa!!
+   ========================================================================== */
+const ALLOWED_ADMIN_PASSCODES = ["Aurora", "jawardoo", "devkey"];
+
+document.getElementById("btn-admin-access").addEventListener("click", () => {
+    const inputCode = prompt("Enter Developer Admin Passcode:");
+    if (inputCode && ALLOWED_ADMIN_PASSCODES.includes(inputCode.trim().toLowerCase())) {
+        isAdmin = true;
+        alert("👑 Admin Perks Activated! .");
+        document.getElementById("btn-admin-access").innerText = "⚡ Admin Active 👑";
+    } else {
+        alert("Incorrect passcode.");
+    }
+});
+
 function showModal(title, desc, onConfirm) {
     document.getElementById("modal-title").innerText = title;
     document.getElementById("modal-desc").innerText = desc;
@@ -39,20 +54,13 @@ document.getElementById("modal-btn-cancel").addEventListener("click", () => {
     pendingModalAction = null;
 });
 
-// Name Editing
-function promptChangeName() {
+document.getElementById("btn-change-name-menu").addEventListener("click", () => {
     const newName = prompt("Enter your new nickname:", playerName);
     if (newName && newName.trim()) {
         playerName = newName.trim();
         document.getElementById("welcome-msg").innerText = `Welcome, ${playerName}`;
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ action: "change_name", new_name: playerName }));
-        }
     }
-}
-
-document.getElementById("btn-change-name-menu").addEventListener("click", promptChangeName);
-document.getElementById("btn-change-name-lobby").addEventListener("click", promptChangeName);
+});
 
 document.getElementById("btn-save-name").addEventListener("click", () => {
     const val = document.getElementById("input-name").value.trim();
@@ -121,6 +129,10 @@ document.getElementById("btn-back-lobby").addEventListener("click", () => {
     if (ws) ws.send(JSON.stringify({ action: "back_to_lobby" }));
 });
 
+document.getElementById("btn-add-bot").addEventListener("click", () => {
+    if (ws) ws.send(JSON.stringify({ action: "add_bot" }));
+});
+
 document.getElementById("btn-finish-turn").addEventListener("click", () => {
     if (ws) ws.send(JSON.stringify({ action: "finish_turn" }));
 });
@@ -134,7 +146,10 @@ function resetToMenu() {
     playerId = "";
     isJoining = false;
     hasVotedThisRound = false;
+    pendingVoteTargetId = null;
+    pendingVoteTargetName = "";
     document.getElementById("btn-join").disabled = false;
+    
     screenLobby.classList.add("hidden");
     screenGame.classList.add("hidden");
     screenMenu.classList.remove("hidden");
@@ -178,13 +193,24 @@ function updateUIState(data) {
         list.innerHTML = "";
         data.players.forEach(p => {
             const li = document.createElement("li");
-            li.innerHTML = `● <strong>${p.name}</strong>`;
+            li.innerHTML = `● <strong>${p.name}</strong> ${p.is_bot ? '<span style="color:#00ffcc;font-size:11px;">[BOT]</span>' : ''}`;
             list.appendChild(li);
         });
 
         const startBtn = document.getElementById("btn-start");
+        const addBotBtn = document.getElementById("btn-add-bot");
         const statusEl = document.getElementById("lobby-status");
         
+        /* ==========================================================================
+           🤖 ADD BOT BUTTON VISIBILITY CONTROL
+           Requirement: Must be the HOST AND active ADMIN to display.
+           ========================================================================== */
+        if (data.is_host && isAdmin) {
+            addBotBtn.classList.remove("hidden");
+        } else {
+            addBotBtn.classList.add("hidden");
+        }
+
         if (data.is_host) {
             startBtn.classList.remove("hidden");
             if (data.players.length < 3) {
@@ -250,7 +276,12 @@ function updateUIState(data) {
                     confirmBox.classList.add("hidden");
                     statusBox.classList.remove("hidden");
                     document.getElementById("voting-subtext").classList.add("hidden");
-                    document.getElementById("voted-status-text").innerText = `You voted for ${data.my_vote_name || "a player"}. Waiting for others...`;
+                    
+                    if (data.my_vote === "SKIP") {
+                        document.getElementById("voted-status-text").innerText = "You skipped your vote. Waiting for others...";
+                    } else {
+                        document.getElementById("voted-status-text").innerText = `You voted for ${data.my_vote_name || "a player"}. Waiting for others...`;
+                    }
                 } else {
                     statusBox.classList.add("hidden");
                     document.getElementById("voting-subtext").classList.remove("hidden");
@@ -264,7 +295,7 @@ function updateUIState(data) {
                             if (!p.eliminated) {
                                 const btn = document.createElement("button");
                                 btn.className = "vote-btn";
-                                btn.innerText = p.id === playerId ? `Vote Yourself (${p.name})` : `Vote ${p.name}`;
+                                btn.innerText = p.id === playerId ? `${p.name} (You)` : p.name;
                                 btn.onclick = () => {
                                     pendingVoteTargetId = p.id;
                                     pendingVoteTargetName = p.name;
@@ -273,10 +304,25 @@ function updateUIState(data) {
                                 vList.appendChild(btn);
                             }
                         });
+
+                        const skipBtn = document.createElement("button");
+                        skipBtn.className = "vote-btn skip-vote-btn";
+                        skipBtn.innerText = "⏭️ Skip Vote";
+                        skipBtn.onclick = () => {
+                            pendingVoteTargetId = "SKIP";
+                            pendingVoteTargetName = "Skip Vote";
+                            updateUIState(data);
+                        };
+                        vList.appendChild(skipBtn);
+
                     } else {
                         vList.classList.add("hidden");
                         confirmBox.classList.remove("hidden");
-                        document.getElementById("voting-confirm-text").innerText = `Are you sure you want to vote ${pendingVoteTargetName}?`;
+                        if (pendingVoteTargetId === "SKIP") {
+                            document.getElementById("voting-confirm-text").innerText = "Are you sure you want to skip your vote?";
+                        } else {
+                            document.getElementById("voting-confirm-text").innerText = `Are you sure you want to vote for ${pendingVoteTargetName}?`;
+                        }
                     }
                 }
             }
@@ -286,12 +332,16 @@ function updateUIState(data) {
             document.getElementById("game-round-indicator").innerText = "GAME OVER";
 
             const titleEl = document.getElementById("game-result-title");
+            const subEl = document.getElementById("game-result-sub");
+
             if (data.winner === "crew") {
                 titleEl.className = "win-title";
-                titleEl.innerText = "VICTORY! CREWMATES WIN!";
+                titleEl.innerText = "VICTORY!";
+                subEl.innerText = "Crewmates Win!";
             } else {
                 titleEl.className = "lose-title";
-                titleEl.innerText = "DEFEAT! IMPOSTER WINS!";
+                titleEl.innerText = "DEFEAT!";
+                subEl.innerText = "Imposter Wins!";
             }
 
             document.getElementById("game-result-desc").innerText = data.end_msg || "";
