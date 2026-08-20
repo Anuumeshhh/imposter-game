@@ -6,7 +6,7 @@ from typing import Dict
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
 
-from words import get_random_word_pair
+from backend.words import get_random_word_pair
 
 app = FastAPI()
 
