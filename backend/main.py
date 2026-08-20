@@ -80,10 +80,10 @@ async def websocket_endpoint(websocket: WebSocket, game_code: str, player_id: st
                 if len(room.players) >= 3:
                     room.start_game()
 
-            elif action == "finish_turn":
+            elif action == "finish_turn" and not player.eliminated:
                 await room.finish_turn(player_id)
 
-            elif action == "vote":
+            elif action == "vote" and not player.eliminated:
                 target_id = data.get("target_id")
                 await room.record_vote(player_id, target_id)
 
