@@ -23,15 +23,19 @@ const viewVoting = document.getElementById("view-voting");
 const viewGameover = document.getElementById("view-gameover");
 
 /* ==========================================================================
-   🔑 ADMIN PASSCODE: 
+   🔑 ADMIN PASSCODE
    ========================================================================== */
 document.getElementById("btn-admin-access").addEventListener("click", () => {
     const inputCode = prompt("Enter Developer Admin Passcode:");
     if (inputCode && inputCode.trim().toLowerCase() === "aurora") {
         isAdmin = true;
         alert("👑 Admin Perks Activated!");
-        // Hide admin access button completely once activated
         document.getElementById("btn-admin-access").classList.add("hidden");
+        
+        // Notify backend so every player in the room sees your [ADMIN] tag
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ action: "activate_admin" }));
+        }
     } else {
         alert("Incorrect passcode.");
     }
@@ -133,6 +137,10 @@ document.getElementById("btn-add-bot").addEventListener("click", () => {
     if (ws) ws.send(JSON.stringify({ action: "add_bot" }));
 });
 
+document.getElementById("btn-remove-bot").addEventListener("click", () => {
+    if (ws) ws.send(JSON.stringify({ action: "remove_bot" }));
+});
+
 document.getElementById("btn-finish-turn").addEventListener("click", () => {
     if (ws) ws.send(JSON.stringify({ action: "finish_turn" }));
 });
@@ -160,6 +168,12 @@ function connectWebSocket() {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     ws = new WebSocket(`${proto}//${window.location.host}/ws/${gameCode}/${playerId}`);
 
+    ws.onopen = () => {
+        if (isAdmin) {
+            ws.send(JSON.stringify({ action: "activate_admin" }));
+        }
+    };
+
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.type === "room_state") {
@@ -182,7 +196,14 @@ function updateUIState(data) {
     screenMenu.classList.add("hidden");
     isJoining = false;
     document.getElementById("btn-join").disabled = false;
-    
+
+    // FIX: Clear voting lock whenever the server is no longer in voting sub-state
+    if (data.sub_state !== "voting") {
+        hasVotedThisRound = false;
+        pendingVoteTargetId = null;
+        pendingVoteTargetName = "";
+    }
+
     if (data.state === "lobby") {
         hasVotedThisRound = false;
         screenLobby.classList.remove("hidden");
@@ -192,24 +213,37 @@ function updateUIState(data) {
         
         const list = document.getElementById("player-list");
         list.innerHTML = "";
+        
         data.players.forEach(p => {
             const li = document.createElement("li");
-            const isMeAdmin = (p.id === playerId && isAdmin);
-            const crown = isMeAdmin ? ' 👑' : '';
-            const botBadge = p.is_bot ? ' <span class="bot-badge">[BOT]</span>' : '';
-            li.innerHTML = `● <strong>${p.name}${crown}</strong>${botBadge}`;
+            let tags = "";
+            
+            // Highlighted Role Badges visible to everyone
+            if (p.is_host) tags += ' <span class="host-badge">[HOST]</span>';
+            if (p.is_admin || (p.id === playerId && isAdmin)) tags += ' <span class="admin-badge">[ADMIN]</span>';
+            if (p.is_bot) tags += ' <span class="bot-badge">[BOT]</span>';
+            
+            li.innerHTML = `● <strong>${p.name}</strong>${tags}`;
             list.appendChild(li);
         });
 
         const startBtn = document.getElementById("btn-start");
         const addBotBtn = document.getElementById("btn-add-bot");
+        const removeBotBtn = document.getElementById("btn-remove-bot");
         const statusEl = document.getElementById("lobby-status");
         
-        
+        const hasBots = data.players.some(p => p.is_bot);
+
         if (data.is_host && isAdmin) {
             addBotBtn.classList.remove("hidden");
+            if (hasBots) {
+                removeBotBtn.classList.remove("hidden");
+            } else {
+                removeBotBtn.classList.add("hidden");
+            }
         } else {
             addBotBtn.classList.add("hidden");
+            removeBotBtn.classList.add("hidden");
         }
 
         if (data.is_host) {
@@ -238,7 +272,6 @@ function updateUIState(data) {
 
         if (data.state === "playing") {
             if (data.sub_state === "reveal") {
-                hasVotedThisRound = false;
                 viewReveal.classList.remove("hidden");
                 document.getElementById("secret-word").innerText = data.my_word;
                 document.getElementById("game-round-indicator").innerText = "REVEAL PHASE";
@@ -256,14 +289,16 @@ function updateUIState(data) {
                     speakerNameEl.innerText = data.current_turn_name;
                 }
 
-                // AUTO-SKIP BOT TURN FOR TESTING
+                /* ==========================================================================
+                   🤖 AUTOMATED BOT TURN FINISH WITH 1.8 SECOND DELAY
+                   ========================================================================== */
                 if (currentSpeaker && currentSpeaker.is_bot && data.is_host) {
                     if (botTurnTimeout) clearTimeout(botTurnTimeout);
                     botTurnTimeout = setTimeout(() => {
                         if (ws && ws.readyState === WebSocket.OPEN) {
                             ws.send(JSON.stringify({ action: "finish_turn" }));
                         }
-                    }, 800);
+                    }, 1800);
                 }
                 
                 document.getElementById("btn-finish-turn").innerText = 
