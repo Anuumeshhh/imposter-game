@@ -1,3 +1,21 @@
+// ==========================================================================
+// 🚫 PREVENT MULTIPLE TABS (ONE TAB LOCK)
+// ==========================================================================
+const gameChannel = new BroadcastChannel('imposter_game_sync');
+gameChannel.postMessage({ type: 'TAB_OPENED' });
+
+gameChannel.onmessage = (event) => {
+    if (event.data.type === 'TAB_OPENED') {
+        gameChannel.postMessage({ type: 'TAB_EXISTS' });
+    } else if (event.data.type === 'TAB_EXISTS') {
+        document.body.innerHTML = `
+            <div class="container" style="text-align:center; margin-top: 20vh;">
+                <h2 style="color:#ff2a5f;">Game Already Open!</h2>
+                <p style="color:#fff;">You can only play from one tab at a time. Please close this tab and return to your active game.</p>
+            </div>`;
+    }
+};
+
 let playerName = "";
 let playerId = "";
 let gameCode = "";
@@ -76,7 +94,7 @@ document.getElementById("btn-save-name").addEventListener("click", () => {
 });
 
 /* ==========================================================================
-   🎮 GAME MODE CREATION LOGIC
+   🎮 GAME MODE CREATION & JOIN LOGIC
    ========================================================================== */
 document.getElementById("btn-create").addEventListener("click", () => {
     document.getElementById("modal-mode-select").classList.remove("hidden");
@@ -113,6 +131,7 @@ document.getElementById("btn-join").addEventListener("click", async () => {
     
     isJoining = true;
     const joinBtn = document.getElementById("btn-join");
+    joinBtn.innerText = "Joining...";
     joinBtn.disabled = true;
 
     try {
@@ -121,15 +140,16 @@ document.getElementById("btn-join").addEventListener("click", async () => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ game_code: code, player_name: playerName })
         });
-        if (!res.ok) throw new Error();
+        if (!res.ok) throw new Error("Game not found or already started");
         const data = await res.json();
         gameCode = data.game_code;
         playerId = data.player_id;
         connectWebSocket();
     } catch (err) {
-        alert("Game not found or already started");
+        alert(err.message || "Game not found or already started");
         isJoining = false;
         joinBtn.disabled = false;
+        joinBtn.innerText = "Join Room";
     }
 });
 
@@ -139,7 +159,6 @@ document.getElementById("btn-leave-lobby").addEventListener("click", () => {
 
 document.getElementById("btn-leave-game").addEventListener("click", () => {
     showModal("Leave Game?", "Are you sure you want to leave mid-game?", () => {
-        if (ws) ws.send(JSON.stringify({ action: "leave_game" }));
         resetToMenu();
     });
 });
@@ -165,10 +184,12 @@ document.getElementById("btn-finish-turn").addEventListener("click", () => {
 });
 
 function resetToMenu() {
-    if (ws) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ action: "leave_game" }));
         ws.close();
-        ws = null;
     }
+    ws = null;
+
     if (botTurnTimeout) clearTimeout(botTurnTimeout);
     gameCode = "";
     playerId = "";
@@ -177,7 +198,10 @@ function resetToMenu() {
     pendingVoteTargetId = null;
     pendingVoteTargetName = "";
     currentTurnId = null;
-    document.getElementById("btn-join").disabled = false;
+
+    const joinBtn = document.getElementById("btn-join");
+    joinBtn.disabled = false;
+    joinBtn.innerText = "Join Room";
     
     screenLobby.classList.add("hidden");
     screenGame.classList.add("hidden");
@@ -215,7 +239,10 @@ function hideAllViews() {
 function updateUIState(data) {
     screenMenu.classList.add("hidden");
     isJoining = false;
-    document.getElementById("btn-join").disabled = false;
+
+    const joinBtn = document.getElementById("btn-join");
+    joinBtn.disabled = false;
+    joinBtn.innerText = "Join Room";
 
     if (data.sub_state !== "voting") {
         hasVotedThisRound = false;
