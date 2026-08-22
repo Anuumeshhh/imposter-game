@@ -7,8 +7,46 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="reconnect-banner" class="reconnect-banner hidden">🔌 Reconnecting…</div>
+    <div id="reconnect-banner" class="reconnect-banner hidden">🔄 Reconnecting…</div>
     <div class="container">
+        
+        <!-- PROMOTIONAL MAIN TITLE -->
+        <h1 class="game-main-title">Guess the Imposter</h1>
+
+        <!-- MODAL OVERLAY (CHANGELOG) -->
+        <div id="modal-changelog" class="modal-overlay">
+            <div class="modal-box changelog-box">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0; font-size: 20px; color: #00f2fe;">Changelog — v1.0 Beta</h2>
+                    <button id="btn-close-changelog" class="close-btn">&times;</button>
+                </div>
+                
+                <h3 style="color: #ffb300; font-size: 15px; margin-top: 10px;">🛠️ Bug Fixes</h3>
+                <ul class="changelog-list">
+                    <li>Fixed the double-joining gateway error caused by multiple rapid clicks.</li>
+                    <li>Fixed the auto-disconnect bug when opening the game in other browser tabs.</li>
+                </ul>
+
+                <h3 style="color: #ffb300; font-size: 15px; margin-top: 10px;">🎨 UI & Interface</h3>
+                <ul class="changelog-list">
+                    <li>Fixed button wiggliness and introduced a more stable, steady interface.</li>
+                    <li>Added a new interface layer to make the website feel less plain and more polished.</li>
+                </ul>
+
+                <h3 style="color: #ffb300; font-size: 15px; margin-top: 10px;">⚙️ Performance & Gameplay</h3>
+                <ul class="changelog-list">
+                    <li>Enhanced overall smoothness and responsiveness.</li>
+                    <li>Added systematic player tracking for more reliable gameplay management.</li>
+                </ul>
+
+                <h3 style="color: #ffb300; font-size: 15px; margin-top: 10px;">📚 Database</h3>
+                <ul class="changelog-list">
+                    <li>Updated unfamiliar/underrepresented words in the database.</li>
+                    <li>Expanded the word database to 1,000+ words.</li>
+                </ul>
+            </div>
+        </div>
+
         <!-- MODAL OVERLAY (CONFIRM) -->
         <div id="modal-overlay" class="modal-overlay hidden">
             <div class="modal-box">
@@ -52,7 +90,7 @@
                 <button id="btn-join" class="btn btn-secondary">Join Room</button>
             </div>
             <hr>
-            <button id="btn-admin-access" class="btn btn-admin">🔑 Admin Access</button>
+            <button id="btn-admin-access" class="btn btn-admin">👑 Admin Access</button>
         </div>
 
         <!-- 3. LOBBY SCREEN -->
@@ -126,6 +164,10 @@
             <button id="btn-leave-game" class="btn btn-danger btn-small">Leave Game</button>
         </div>
     </div>
+    
+    <!-- TRADEMARK -->
+    <div class="trademark-footer">by Anumesh</div>
+    
     <script src="script.js"></script>
 </body>
 </html>
