@@ -41,6 +41,11 @@ body {
    🏆 PROMOTIONAL TITLE, CHANGELOG & TRADEMARK (NEW)
    ========================================================================== */
 .game-main-title {
+    .title-imposter {
+    background: linear-gradient(135deg, #ff2a5f 0%, #ff527b 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
     text-align: center;
     /* Fluid typography: sizes beautifully between 26px and 36px based on screen size */
     font-size: clamp(26px, 6vw, 36px); 
