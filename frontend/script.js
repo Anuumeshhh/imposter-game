@@ -12,7 +12,9 @@ let pendingModalAction = null;
 let botTurnTimeout = null;
 let currentTurnId = null;
 
-
+/* ==========================================================================
+   🔌 CONNECTION RESILIENCE
+   ========================================================================== */
 const SESSION_KEY = "impostergame_session";
 const HEARTBEAT_MS = 20000;
 const MAX_RECONNECT_ATTEMPTS = 6;
@@ -38,7 +40,9 @@ function showReconnectBanner(show) {
     if (el) el.classList.toggle("hidden", !show);
 }
 
-
+/* ==========================================================================
+   🔊 SFX 
+   ========================================================================== */
 let audioCtx = null;
 function getAudioCtx() {
     if (!audioCtx) {
@@ -69,8 +73,6 @@ const sfxAnnounce = () => playTone(110, 0.4, "sine", 0.12);
 const sfxWin = () => { playTone(523, 0.18, "triangle", 0.1); setTimeout(() => playTone(784, 0.35, "triangle", 0.1), 140); };
 const sfxLose = () => { playTone(160, 0.25, "sawtooth", 0.12); setTimeout(() => playTone(90, 0.45, "sawtooth", 0.12), 160); };
 
-// Delegate a click tone to every button in the app in one place, rather than
-// touching every existing handler.
 document.addEventListener("click", (e) => {
     if (e.target.closest && e.target.closest(".btn")) sfxClick();
 });
@@ -280,8 +282,6 @@ function connectWebSocket() {
         if (data.type === "room_state") {
             updateUIState(data);
         } else if (data.type === "error") {
-            // Room or player is gone server-side (e.g. grace period expired) --
-            // don't bother retrying, just return to the menu cleanly.
             intentionalClose = true;
         }
     };
@@ -321,9 +321,6 @@ function stopHeartbeat() {
     heartbeatInterval = null;
 }
 
-/* Restore a session on page load (same-tab refresh) instead of treating it
-   as a brand new join -- opening a genuinely new tab still starts fresh,
-   since sessionStorage is per-tab. */
 (function tryRestoreSession() {
     let raw;
     try { raw = sessionStorage.getItem(SESSION_KEY); } catch (e) { return; }
@@ -611,4 +608,19 @@ document.getElementById("btn-cancel-vote").addEventListener("click", () => {
 
 document.getElementById("btn-start").addEventListener("click", () => {
     if (ws) ws.send(JSON.stringify({ action: "start_game" }));
+});
+
+/* ==========================================================================
+   📜 CHANGELOG POPUP LOGIC
+   ========================================================================== */
+document.addEventListener("DOMContentLoaded", () => {
+    const changelogModal = document.getElementById("modal-changelog");
+    const btnCloseChangelog = document.getElementById("btn-close-changelog");
+
+    if (btnCloseChangelog && changelogModal) {
+        btnCloseChangelog.addEventListener("click", () => {
+            changelogModal.classList.add("hidden");
+            sfxClick(); 
+        });
+    }
 });
