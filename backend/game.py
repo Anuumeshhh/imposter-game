@@ -21,6 +21,8 @@ class Player:
         self.word = ""
         self.vote = None 
         self.websocket: Optional[WebSocket] = None
+        self.connected = True
+        self.removal_task: Optional[asyncio.Task] = None
 
     def to_dict(self):
         return {
@@ -30,10 +32,13 @@ class Player:
             "is_admin": self.is_admin,
             "is_bot": self.is_bot,
             "eliminated": self.eliminated,
+            "connected": self.connected,
         }
 
 
 class Room:
+    DISCONNECT_GRACE_SECONDS = 45
+
     def __init__(self, code: str, mode: str = "single"):
         self.code = code
         self.players: Dict[str, Player] = {}
@@ -60,6 +65,14 @@ class Room:
     def get_active_players(self) -> List[Player]:
         return [p for p in self.players.values() if not p.eliminated]
 
+    def name_taken(self, name: str, exclude_id: str = None) -> bool:
+        target = name.strip().lower()
+        return any(
+            p.name.strip().lower() == target
+            for pid, p in self.players.items()
+            if pid != exclude_id
+        )
+
     def add_player(self, name: str, is_host: bool = False, is_bot: bool = False) -> Player:
         player_id = f"bot_{uuid.uuid4().hex[:6]}" if is_bot else uuid.uuid4().hex[:8]
         player = Player(player_id, name, is_host=is_host, is_bot=is_bot)
@@ -67,8 +80,49 @@ class Room:
         return player
 
     def remove_player(self, player_id: str):
+        player = self.players.get(player_id)
+        if player and player.removal_task:
+            player.removal_task.cancel()
         if player_id in self.players:
             del self.players[player_id]
+
+    def reconnect_player(self, player_id: str, websocket) -> Optional[WebSocket]:
+        """Attach a fresh websocket to an existing player. Returns the old
+        socket (if any) so the caller can close it, preventing duplicate
+        live connections for the same player."""
+        player = self.players.get(player_id)
+        if not player:
+            return None
+        if player.removal_task:
+            player.removal_task.cancel()
+            player.removal_task = None
+        old_ws = player.websocket
+        player.connected = True
+        player.websocket = websocket
+        return old_ws
+
+    def mark_disconnected(self, player_id: str):
+        """Called when a player's socket drops. Instead of deleting them
+        immediately (which would kill their word/vote/imposter state and
+        block a quick reconnect), give them a grace window to come back."""
+        player = self.players.get(player_id)
+        if not player:
+            return
+        player.connected = False
+        player.websocket = None
+        if player.removal_task:
+            player.removal_task.cancel()
+        player.removal_task = asyncio.create_task(self._remove_after_grace(player_id))
+
+    async def _remove_after_grace(self, player_id: str):
+        try:
+            await asyncio.sleep(self.DISCONNECT_GRACE_SECONDS)
+        except asyncio.CancelledError:
+            return
+        player = self.players.get(player_id)
+        if player and not player.connected:
+            self.remove_player(player_id)
+            await self.broadcast_state()
 
     async def broadcast_state(self):
         active_players = self.get_active_players()
