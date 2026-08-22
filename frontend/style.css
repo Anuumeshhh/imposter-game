@@ -37,6 +37,67 @@ body {
     display: none !important;
 }
 
+/* ==========================================================================
+   🪶 MOTION — re-triggering an animation via a `:not(.hidden)` selector
+   whenever a card/view stops being hidden. This is what gives screen and
+   phase changes actual weight instead of an instant, jarring hard-cut.
+   ========================================================================== */
+@keyframes cardEnter {
+    from { opacity: 0; transform: translateY(16px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.card:not(.hidden) {
+    animation: cardEnter 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes viewEnter {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.game-view:not(.hidden) {
+    animation: viewEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes playerEnter {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+.player-enter {
+    opacity: 0;
+    animation: playerEnter 0.3s ease-out forwards;
+}
+
+/* Timer gets visually urgent in the closing seconds instead of just
+   ticking down as flat text. */
+.timer.urgent {
+    color: #ff2a5f !important;
+    animation: timerPulse 0.6s ease-in-out infinite;
+}
+@keyframes timerPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.18); }
+}
+
+.reconnecting-badge {
+    color: #ffb300;
+    font-size: 12px;
+    font-weight: bold;
+    margin-left: 6px;
+}
+
+.reconnect-banner {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 1100;
+    text-align: center;
+    padding: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    background: #ffb300;
+    color: #1a1b2f;
+    animation: cardEnter 0.25s ease-out;
+}
+
 h1, h2, h3 {
     font-weight: 700;
     margin-bottom: 14px;
@@ -168,6 +229,14 @@ input:focus {
     font-size: 12px;
     font-weight: bold;
     margin-left: 6px;
+}
+
+.eliminated-badge {
+    color: #6b6d7d;
+    font-size: 12px;
+    font-weight: bold;
+    margin-left: 6px;
+    text-decoration: line-through;
 }
 
 .word-box {
