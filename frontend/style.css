@@ -38,9 +38,70 @@ body {
 }
 
 /* ==========================================================================
-   🪶 MOTION — re-triggering an animation via a `:not(.hidden)` selector
-   whenever a card/view stops being hidden. This is what gives screen and
-   phase changes actual weight instead of an instant, jarring hard-cut.
+   🏆 PROMOTIONAL TITLE, CHANGELOG & TRADEMARK (NEW)
+   ========================================================================== */
+.game-main-title {
+    text-align: center;
+    /* Fluid typography: sizes beautifully between 26px and 36px based on screen size */
+    font-size: clamp(26px, 6vw, 36px); 
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 24px;
+    background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 4px 10px rgba(0, 242, 254, 0.4));
+    animation: viewEnter 0.5s ease-out;
+}
+
+.changelog-box {
+    max-height: 85vh; 
+    overflow-y: auto; 
+    text-align: left;
+    max-width: 400px !important;
+    width: 90vw !important;
+}
+
+.changelog-list {
+    padding-left: 20px; 
+    font-size: 13px; 
+    opacity: 0.9; 
+    margin-bottom: 16px; 
+    line-height: 1.5;
+}
+
+.close-btn {
+    background: none; 
+    border: none; 
+    color: white; 
+    font-size: 32px; 
+    cursor: pointer; 
+    padding: 0; 
+    line-height: 1; 
+    transition: transform 0.2s, color 0.2s;
+}
+
+.close-btn:hover {
+    color: #ff2a5f;
+    transform: scale(1.1);
+}
+
+.trademark-footer {
+    position: fixed;
+    bottom: 12px;
+    right: 16px;
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.15); /* Subtly integrated */
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 1000;
+}
+
+/* ==========================================================================
+   🪶 MOTION
    ========================================================================== */
 @keyframes cardEnter {
     from { opacity: 0; transform: translateY(16px) scale(0.97); }
@@ -67,8 +128,6 @@ body {
     animation: playerEnter 0.3s ease-out forwards;
 }
 
-/* Timer gets visually urgent in the closing seconds instead of just
-   ticking down as flat text. */
 .timer.urgent {
     color: #ff2a5f !important;
     animation: timerPulse 0.6s ease-in-out infinite;
