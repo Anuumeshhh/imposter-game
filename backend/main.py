@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -30,17 +30,40 @@ class JoinGameRequest(BaseModel):
 
 @app.post("/api/create-game")
 async def create_game(req: CreateGameRequest):
-    room, player = game_manager.create_room(req.host_name, req.mode)
+    name = req.host_name.strip()
+    if not name:
+        return JSONResponse(status_code=400, content={"error": "Please enter a name."})
+
+    room, player = game_manager.create_room(name, req.mode)
     return {"game_code": room.code, "player_id": player.id}
 
 
 @app.post("/api/join-game")
 async def join_game(req: JoinGameRequest):
+    # NOTE: FastAPI does NOT support Flask-style `return body, status_code`.
+    # Returning a tuple here used to get serialized as a 200 OK response
+    # containing a JSON array, so the frontend's `if (!res.ok)` check never
+    # caught it -- callers silently got `data.game_code === undefined` and
+    # a websocket connection that immediately failed. Always use an explicit
+    # JSONResponse (or raise HTTPException) for error paths.
     room = game_manager.get_room(req.game_code)
     if not room or room.state != "lobby":
-        return {"error": "Game not found or already started"}, 400
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Game not found or already started."},
+        )
 
-    player = room.add_player(req.player_name, is_host=False)
+    name = req.player_name.strip()
+    if not name:
+        return JSONResponse(status_code=400, content={"error": "Please enter a name."})
+
+    if room.name_taken(name):
+        return JSONResponse(
+            status_code=409,
+            content={"error": f'"{name}" is already taken in this room. Pick a different name.'},
+        )
+
+    player = room.add_player(name, is_host=False)
     return {"game_code": room.code, "player_id": player.id}
 
 
@@ -50,11 +73,23 @@ async def websocket_endpoint(websocket: WebSocket, game_code: str, player_id: st
     room = game_manager.get_room(game_code)
 
     if not room or player_id not in room.players:
+        await websocket.send_json({"type": "error", "message": "Room or player not found."})
         await websocket.close()
         return
 
     player = room.players[player_id]
-    player.websocket = websocket
+
+    # A dropped connection (wifi blip, backgrounded tab, proxy idle timeout,
+    # etc.) doesn't delete the player anymore -- see Room.mark_disconnected.
+    # Reattach this new socket to that same player instead of treating it as
+    # a brand new join, and close out any stale old socket still attached.
+    old_ws = room.reconnect_player(player_id, websocket)
+    if old_ws and old_ws is not websocket:
+        try:
+            await old_ws.close()
+        except Exception:
+            pass
+
     await room.broadcast_state()
 
     try:
@@ -62,7 +97,13 @@ async def websocket_endpoint(websocket: WebSocket, game_code: str, player_id: st
             data = await websocket.receive_json()
             action = data.get("action")
 
-            if action == "activate_admin":
+            if action == "ping":
+                # Heartbeat only -- keeps the socket "active" so reverse
+                # proxies / load balancers with idle timeouts don't kill it
+                # while sitting quietly in the lobby.
+                continue
+
+            elif action == "activate_admin":
                 player.is_admin = True
                 await room.broadcast_state()
 
@@ -98,7 +139,7 @@ async def websocket_endpoint(websocket: WebSocket, game_code: str, player_id: st
                 break
 
     except WebSocketDisconnect:
-        room.remove_player(player_id)
+        room.mark_disconnected(player_id)
         await room.broadcast_state()
 
 
