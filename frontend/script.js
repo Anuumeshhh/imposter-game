@@ -1,21 +1,3 @@
-// ==========================================================================
-// 🚫 PREVENT MULTIPLE TABS (ONE TAB LOCK)
-// ==========================================================================
-const gameChannel = new BroadcastChannel('imposter_game_sync');
-gameChannel.postMessage({ type: 'TAB_OPENED' });
-
-gameChannel.onmessage = (event) => {
-    if (event.data.type === 'TAB_OPENED') {
-        gameChannel.postMessage({ type: 'TAB_EXISTS' });
-    } else if (event.data.type === 'TAB_EXISTS') {
-        document.body.innerHTML = `
-            <div class="container" style="text-align:center; margin-top: 20vh;">
-                <h2 style="color:#ff2a5f;">Game Already Open!</h2>
-                <p style="color:#fff;">You can only play from one tab at a time. Please close this tab and return to your active game.</p>
-            </div>`;
-    }
-};
-
 let playerName = "";
 let playerId = "";
 let gameCode = "";
@@ -28,7 +10,70 @@ let pendingVoteTargetName = "";
 let hasVotedThisRound = false;
 let pendingModalAction = null;
 let botTurnTimeout = null;
-let currentTurnId = null; 
+let currentTurnId = null;
+
+
+const SESSION_KEY = "impostergame_session";
+const HEARTBEAT_MS = 20000;
+const MAX_RECONNECT_ATTEMPTS = 6;
+let reconnectAttempts = 0;
+let reconnectTimeout = null;
+let heartbeatInterval = null;
+let intentionalClose = false;
+let lastSeenSubState = null;
+let lastSeenState = null;
+
+function saveSession() {
+    try {
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ gameCode, playerId, playerName }));
+    } catch (e) {}
+}
+
+function clearSession() {
+    try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+}
+
+function showReconnectBanner(show) {
+    const el = document.getElementById("reconnect-banner");
+    if (el) el.classList.toggle("hidden", !show);
+}
+
+
+let audioCtx = null;
+function getAudioCtx() {
+    if (!audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) audioCtx = new AC();
+    }
+    return audioCtx;
+}
+function playTone(freq, duration, type, gainStart) {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    try {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type || "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(gainStart || 0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + duration);
+    } catch (e) {}
+}
+const sfxClick = () => playTone(340, 0.07, "square", 0.05);
+const sfxVote = () => playTone(200, 0.16, "sawtooth", 0.08);
+const sfxAnnounce = () => playTone(110, 0.4, "sine", 0.12);
+const sfxWin = () => { playTone(523, 0.18, "triangle", 0.1); setTimeout(() => playTone(784, 0.35, "triangle", 0.1), 140); };
+const sfxLose = () => { playTone(160, 0.25, "sawtooth", 0.12); setTimeout(() => playTone(90, 0.45, "sawtooth", 0.12), 160); };
+
+// Delegate a click tone to every button in the app in one place, rather than
+// touching every existing handler.
+document.addEventListener("click", (e) => {
+    if (e.target.closest && e.target.closest(".btn")) sfxClick();
+});
 
 const screenName = document.getElementById("screen-name");
 const screenMenu = document.getElementById("screen-menu");
@@ -94,7 +139,7 @@ document.getElementById("btn-save-name").addEventListener("click", () => {
 });
 
 /* ==========================================================================
-   🎮 GAME MODE CREATION & JOIN LOGIC
+   🎮 GAME MODE CREATION LOGIC
    ========================================================================== */
 document.getElementById("btn-create").addEventListener("click", () => {
     document.getElementById("modal-mode-select").classList.remove("hidden");
@@ -113,11 +158,13 @@ const createRoomWithMode = async (mode) => {
             body: JSON.stringify({ host_name: playerName, mode: mode })
         });
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Error creating game");
         gameCode = data.game_code;
         playerId = data.player_id;
+        saveSession();
         connectWebSocket();
     } catch (err) {
-        alert("Error creating game");
+        alert(err.message || "Error creating game");
     }
 };
 
@@ -131,7 +178,6 @@ document.getElementById("btn-join").addEventListener("click", async () => {
     
     isJoining = true;
     const joinBtn = document.getElementById("btn-join");
-    joinBtn.innerText = "Joining...";
     joinBtn.disabled = true;
 
     try {
@@ -140,16 +186,16 @@ document.getElementById("btn-join").addEventListener("click", async () => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ game_code: code, player_name: playerName })
         });
-        if (!res.ok) throw new Error("Game not found or already started");
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Game not found or already started");
         gameCode = data.game_code;
         playerId = data.player_id;
+        saveSession();
         connectWebSocket();
     } catch (err) {
         alert(err.message || "Game not found or already started");
         isJoining = false;
         joinBtn.disabled = false;
-        joinBtn.innerText = "Join Room";
     }
 });
 
@@ -159,6 +205,7 @@ document.getElementById("btn-leave-lobby").addEventListener("click", () => {
 
 document.getElementById("btn-leave-game").addEventListener("click", () => {
     showModal("Leave Game?", "Are you sure you want to leave mid-game?", () => {
+        if (ws) ws.send(JSON.stringify({ action: "leave_game" }));
         resetToMenu();
     });
 });
@@ -184,12 +231,17 @@ document.getElementById("btn-finish-turn").addEventListener("click", () => {
 });
 
 function resetToMenu() {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ action: "leave_game" }));
-        ws.close();
-    }
-    ws = null;
+    intentionalClose = true;
+    stopHeartbeat();
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    reconnectAttempts = 0;
+    showReconnectBanner(false);
+    clearSession();
 
+    if (ws) {
+        ws.close();
+        ws = null;
+    }
     if (botTurnTimeout) clearTimeout(botTurnTimeout);
     gameCode = "";
     playerId = "";
@@ -198,10 +250,9 @@ function resetToMenu() {
     pendingVoteTargetId = null;
     pendingVoteTargetName = "";
     currentTurnId = null;
-
-    const joinBtn = document.getElementById("btn-join");
-    joinBtn.disabled = false;
-    joinBtn.innerText = "Join Room";
+    lastSeenSubState = null;
+    lastSeenState = null;
+    document.getElementById("btn-join").disabled = false;
     
     screenLobby.classList.add("hidden");
     screenGame.classList.add("hidden");
@@ -209,24 +260,87 @@ function resetToMenu() {
 }
 
 function connectWebSocket() {
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    intentionalClose = false;
+
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     ws = new WebSocket(`${proto}//${window.location.host}/ws/${gameCode}/${playerId}`);
 
     ws.onopen = () => {
+        reconnectAttempts = 0;
+        showReconnectBanner(false);
         if (isAdmin) {
             ws.send(JSON.stringify({ action: "activate_admin" }));
         }
+        startHeartbeat();
     };
 
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.type === "room_state") {
             updateUIState(data);
+        } else if (data.type === "error") {
+            // Room or player is gone server-side (e.g. grace period expired) --
+            // don't bother retrying, just return to the menu cleanly.
+            intentionalClose = true;
         }
     };
 
-    ws.onclose = () => { resetToMenu(); };
+    ws.onclose = () => {
+        stopHeartbeat();
+
+        if (intentionalClose) {
+            resetToMenu();
+            return;
+        }
+
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttempts++;
+            showReconnectBanner(true);
+            const delay = Math.min(1000 * reconnectAttempts, 5000);
+            reconnectTimeout = setTimeout(connectWebSocket, delay);
+        } else {
+            showReconnectBanner(false);
+            alert("Lost connection to the game.");
+            resetToMenu();
+        }
+    };
 }
+
+function startHeartbeat() {
+    stopHeartbeat();
+    heartbeatInterval = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ action: "ping" }));
+        }
+    }, HEARTBEAT_MS);
+}
+
+function stopHeartbeat() {
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+}
+
+/* Restore a session on page load (same-tab refresh) instead of treating it
+   as a brand new join -- opening a genuinely new tab still starts fresh,
+   since sessionStorage is per-tab. */
+(function tryRestoreSession() {
+    let raw;
+    try { raw = sessionStorage.getItem(SESSION_KEY); } catch (e) { return; }
+    if (!raw) return;
+
+    try {
+        const s = JSON.parse(raw);
+        if (s.gameCode && s.playerId && s.playerName) {
+            playerName = s.playerName;
+            gameCode = s.gameCode;
+            playerId = s.playerId;
+            document.getElementById("welcome-msg").innerText = `Welcome, ${playerName}`;
+            screenName.classList.add("hidden");
+            connectWebSocket();
+        }
+    } catch (e) {}
+})();
 
 function hideAllViews() {
     viewReveal.classList.add("hidden");
@@ -239,10 +353,10 @@ function hideAllViews() {
 function updateUIState(data) {
     screenMenu.classList.add("hidden");
     isJoining = false;
+    document.getElementById("btn-join").disabled = false;
 
-    const joinBtn = document.getElementById("btn-join");
-    joinBtn.disabled = false;
-    joinBtn.innerText = "Join Room";
+    const prevState = lastSeenState;
+    const prevSubState = lastSeenSubState;
 
     if (data.sub_state !== "voting") {
         hasVotedThisRound = false;
@@ -260,8 +374,10 @@ function updateUIState(data) {
         const list = document.getElementById("player-list");
         list.innerHTML = "";
         
-        data.players.forEach(p => {
+        data.players.forEach((p, i) => {
             const li = document.createElement("li");
+            li.className = "player-enter";
+            li.style.animationDelay = `${i * 45}ms`;
             let tags = "";
             
             if (p.is_host) tags += ' <span class="host-badge">[HOST]</span>';
@@ -269,6 +385,7 @@ function updateUIState(data) {
             if (p.name.toLowerCase() === "anumesh") tags += ' <span class="dev-badge">[DEV]</span>'; 
             if (p.is_bot) tags += ' <span class="bot-badge">[BOT]</span>';
             if (p.eliminated) tags += ' <span class="eliminated-badge">[ELIMINATED]</span>';
+            if (p.connected === false) tags += ' <span class="reconnecting-badge">[RECONNECTING…]</span>';
             
             li.innerHTML = `● <strong>${p.name}</strong>${tags}`;
             list.appendChild(li);
@@ -317,7 +434,9 @@ function updateUIState(data) {
         screenGame.classList.remove("hidden");
         hideAllViews();
 
-        document.getElementById("turn-timer").innerText = `${data.timer || 0}s`;
+        const timerEl = document.getElementById("turn-timer");
+        timerEl.innerText = `${data.timer || 0}s`;
+        timerEl.classList.toggle("urgent", data.state === "playing" && data.timer > 0 && data.timer <= 5);
 
         if (data.state === "playing") {
             if (data.sub_state === "reveal") {
@@ -366,6 +485,7 @@ function updateUIState(data) {
                 viewAnnouncement.classList.remove("hidden");
                 document.getElementById("announcement-title").innerText = data.announcement_text;
                 document.getElementById("game-round-indicator").innerText = "ANNOUNCEMENT";
+                if (prevSubState !== "announcement") sfxAnnounce();
             } 
             else if (data.sub_state === "voting") {
                 viewVoting.classList.remove("hidden");
@@ -461,13 +581,21 @@ function updateUIState(data) {
             document.getElementById("reveal-imposter-word").innerText = data.imposter_word || "--";
 
             document.getElementById("btn-back-lobby").style.display = "inline-block";
+
+            if (prevState !== "game_over") {
+                if (data.winner === "crew") sfxWin(); else sfxLose();
+            }
         }
     }
+
+    lastSeenState = data.state;
+    lastSeenSubState = data.sub_state;
 }
 
 document.getElementById("btn-confirm-vote").addEventListener("click", () => {
     if (pendingVoteTargetId && ws) {
         ws.send(JSON.stringify({ action: "vote", target_id: pendingVoteTargetId }));
+        sfxVote();
         hasVotedThisRound = true;
         pendingVoteTargetId = null;
         pendingVoteTargetName = "";
