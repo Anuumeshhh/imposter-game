@@ -1,5 +1,7 @@
 # 🕵️‍♂️ The Imposter Game 🕵️‍♀️
 
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 Welcome to **The Imposter Game**! This is a fast-paced, real-time multiplayer social deduction game built for the web. Gather your friends, test your deception skills, and find out who among you is the ultimate imposter! 
 
