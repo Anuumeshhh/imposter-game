@@ -1,45 +1,75 @@
-# 🕵️‍♂️ Imposter Game (Web-Based Social Deduction Game)
+# 🕵️‍♂️ The Imposter Game 🕵️‍♀️
 
-> A real-time, multiplayer social deduction web game built with **Python FastAPI**, **WebSockets**, and **Vanilla JavaScript**. Inspired by undercover word games, players receive secret words (or are assigned as the imposter) and must figure out who is who through clues, chat, and deduction!
 
-No heavy frontend frameworks, no databases required, and no user accounts to create—just spin up a room, share the code, and play instantly right in your mobile or desktop browser! 🚀
+Welcome to **The Imposter Game**! This is a fast-paced, real-time multiplayer social deduction game built for the web. Gather your friends, test your deception skills, and find out who among you is the ultimate imposter! 
 
----
-
-## 🌟 Features
-
-* **⚡ Real-time Synchronization:** Powered by WebSockets so lobbies, player lists, and game actions update instantly across all players' devices.
-* **🛡️ Server-Authoritative Logic:** Game rules, secret word distribution, and state transitions are entirely managed on the Python backend to completely prevent cheating or inspection.
-* **📱 Mobile-First Design:** Fully responsive layout built to run smoothly on any mobile browser—no app store downloads needed!
-* **📦 Lightweight Architecture:** Built cleanly using FastAPI without the bloat of heavy ORMs, complex build pipelines, or databases.
+In each round, players are secretly assigned a word. The **Crewmates** all receive the exact same common word, while the **Imposter(s)** receives a similar but distinctly different word. Through careful discussion, deduction, and voting, the Crewmates must eliminate the Imposter before it's too late!
 
 ---
 
-## 🎮 How to Play
+## ✨ Key Features
 
-1. **Enter Your Name:** Open the website and type in your nickname.
-2. **Create or Join:** 
-   * Create a new room to get a unique **4-character Game Code** (e.g., `K7P2`).
-   * Or enter a friend's code to join their lobby.
-3. **The Reveal:** Once the host starts the game, the server secretly assigns a common word to crew members and a different (but related) word to the single **Imposter**.
-4. **Discussion & Voting:** Give hints, chat in real-time, and vote out who you think the imposter is!
+*   **⚡ Real-Time Gameplay:** Powered by WebSockets to handle instantaneous state updates, seamless turn-taking, and live voting without page refreshes.
+*   **🔄 Unbreakable Connections:** Built-in session storage, periodic heartbeats, and automatic reconnect attempts ensure that if you drop connection (Wi-Fi blip or closed tab), you can instantly rejoin the lobby right where you left off.
+*   **🎮 Multiple Game Modes:**
+    *   **Single Imposter:** Classic mode for 3 or more players.
+    *   **Double Imposter:** Chaos mode for larger groups (requires 5+ players).
+*   **🤖 Automated Bots & Admin Controls:** Short on players? The host can seamlessly add AI bots to fill out the lobby (requires admin access). 
+*   **📚 Massive Word Database:** Features a diverse, Base64-encoded library of word pairs spanning Anime (JJK, MHA, One Piece, etc.), Marvel, Science, Technology, and everyday items. Base64 encoding ensures source words remain hidden from plain text in the network tab!
+*   **🎵 Dynamic Synthesized Audio:** Utilizes the native Web Audio API to generate custom, synthesized sound effects for UI clicks, turn announcements, and game-over states—no external MP3/WAV files required!
+*   **🌌 Polished UI & Animations:** A beautiful, responsive dark-themed interface built with custom CSS animations to give phase transitions, countdown timers, and player interactions a weighty, premium feel.
 
 ---
 
-## 📁 Project Structure
+## 🛠️ Tech Stack
 
-```text
-imposter-game/
-│
-├── backend/
-│   ├── __init__.py
-│   ├── main.py        # FastAPI app, static file mounting, & WebSocket routing
-│   ├── game.py        # Core game state manager, rooms, and logic
-│   └── words.py       # Curated word pairs with difficulty tiers
-│
-├── frontend/
-│   ├── index.html     # Single-page interface with multiple screens
-│   ├── style.css      # Dark-themed responsive styles
-│   └── script.js      # WebSocket client and dynamic UI controller
-│
-└── requirements.txt   # Python dependencies
+| Component | Technologies Used |
+| :--- | :--- |
+| **Frontend** | HTML5, CSS3 (Custom animations, Poppins font), Vanilla JavaScript |
+| **Backend** | Python, FastAPI, `asyncio` |
+| **Networking** | WebSockets (Live game state), REST APIs (Room creation) |
+
+---
+
+## 🎲 How to Play (Game Flow)
+
+### 1. The Lobby Setup 🚪
+A host creates a room, selects the number of imposters, and is given a unique **6-character Room Code**. Share this code with your friends so they can join your lobby.
+
+### 2. The Reveal Phase 🤫
+Once everyone is ready, the host starts the game. A secret word is revealed to each player on their screen. Keep it hidden!
+
+### 3. The Speaking Phase 💬
+A randomized turn order is established. When it is your turn, you must give a **one-word or short-phrase hint** about your word. 
+*   *Crewmate Goal:* Prove you know the word without giving it away to the Imposter.
+*   *Imposter Goal:* Blend in and figure out what the Crewmate word is based on their hints!
+
+### 4. The Voting Phase 🗳️
+After all turns are complete, players discuss and cast their vote for who they think the Imposter is. You can also choose to **Skip** voting. If there is a tie, an automatic tiebreaker speaking round is triggered!
+
+### 5. Winning the Game 🏆
+*   **Crewmates Win:** If the Imposter(s) is successfully voted out.
+*   **Imposter Wins:** If they survive until there are 3 or fewer total players remaining in the game.
+
+---
+
+## ⚙️ Admin Controls
+
+For developers and server hosts, there are hidden controls to help manage lobbies and test gameplay.
+
+
+---
+
+## 🚀 Installation & Local Setup
+
+Want to run The Imposter Game on your local machine? Follow these steps:
+
+### Prerequisites
+*   Python 3.8+ installed
+*   A modern web browser
+
+### Backend Setup
+1. Clone the repository:
+   ```bash
+   git clone [https://github.com/yourusername/imposter-game.git](https://github.com/yourusername/imposter-game.git)
+   cd imposter-game
