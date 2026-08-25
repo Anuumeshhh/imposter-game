@@ -1,8 +1,5 @@
 # 🕵️‍♂️ The Imposter Game 🕵️‍♀️
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
-
 Welcome to **The Imposter Game**! This is a fast-paced, real-time multiplayer social deduction game built for the web. Gather your friends, test your deception skills, and find out who among you is the ultimate imposter! 
 
 In each round, players are secretly assigned a word. The **Crewmates** all receive the exact same common word, while the **Imposter(s)** receives a similar but distinctly different word. Through careful discussion, deduction, and voting, the Crewmates must eliminate the Imposter before it's too late!
@@ -59,7 +56,6 @@ After all turns are complete, players discuss and cast their vote for who they t
 
 For developers and server hosts, there are hidden controls to help manage lobbies and test gameplay.
 
-
 ---
 
 ## 🚀 Installation & Local Setup
@@ -75,3 +71,37 @@ Want to run The Imposter Game on your local machine? Follow these steps:
    ```bash
    git clone [https://github.com/yourusername/imposter-game.git](https://github.com/yourusername/imposter-game.git)
    cd imposter-game
+   ```
+2. Create a virtual environment and activate it:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows use: venv\Scripts\activate
+   ```
+3. Install the dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+4. Start the FastAPI server:
+   ```bash
+   uvicorn main:app --reload
+   ```
+   *The backend will typically run on `http://localhost:8000`.*
+
+### Frontend Setup
+1. Navigate to the frontend directory.
+2. If using a live server extension (like VS Code Live Server), simply serve the `index.html` file.
+3. Ensure the WebSocket connection URL in your `app.js` (or equivalent file) points to your local FastAPI server.
+
+---
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome! 
+1. Fork the project.
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
+4. Push to the branch (`git push origin feature/AmazingFeature`).
+5. Open a Pull Request.
+
+---
+*Happy Deceiving! 🎭*
