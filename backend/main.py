@@ -40,12 +40,7 @@ async def create_game(req: CreateGameRequest):
 
 @app.post("/api/join-game")
 async def join_game(req: JoinGameRequest):
-    # NOTE: FastAPI does NOT support Flask-style `return body, status_code`.
-    # Returning a tuple here used to get serialized as a 200 OK response
-    # containing a JSON array, so the frontend's `if (!res.ok)` check never
-    # caught it -- callers silently got `data.game_code === undefined` and
-    # a websocket connection that immediately failed. Always use an explicit
-    # JSONResponse (or raise HTTPException) for error paths.
+  
     room = game_manager.get_room(req.game_code)
     if not room or room.state != "lobby":
         return JSONResponse(
@@ -79,10 +74,7 @@ async def websocket_endpoint(websocket: WebSocket, game_code: str, player_id: st
 
     player = room.players[player_id]
 
-    # A dropped connection (wifi blip, backgrounded tab, proxy idle timeout,
-    # etc.) doesn't delete the player anymore -- see Room.mark_disconnected.
-    # Reattach this new socket to that same player instead of treating it as
-    # a brand new join, and close out any stale old socket still attached.
+ 
     old_ws = room.reconnect_player(player_id, websocket)
     if old_ws and old_ws is not websocket:
         try:
@@ -98,9 +90,7 @@ async def websocket_endpoint(websocket: WebSocket, game_code: str, player_id: st
             action = data.get("action")
 
             if action == "ping":
-                # Heartbeat only -- keeps the socket "active" so reverse
-                # proxies / load balancers with idle timeouts don't kill it
-                # while sitting quietly in the lobby.
+           
                 continue
 
             elif action == "activate_admin":
